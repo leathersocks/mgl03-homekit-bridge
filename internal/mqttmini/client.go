@@ -16,7 +16,7 @@ const maxPacketSize = 1024 * 1024
 
 type Client struct {
 	Address  string
-	Topic    string
+	Topics   []string
 	ClientID string
 	OnError  func(error)
 }
@@ -48,8 +48,13 @@ func (c Client) Run(ctx context.Context, handler func(payload []byte)) {
 }
 
 func (c Client) serve(ctx context.Context, handler func([]byte)) error {
-	if strings.TrimSpace(c.Address) == "" || strings.TrimSpace(c.Topic) == "" {
-		return errors.New("MQTT address and topic are required")
+	topics := normalizedTopics(c.Topics)
+	if strings.TrimSpace(c.Address) == "" || len(topics) == 0 {
+		return errors.New("MQTT address and at least one topic are required")
+	}
+	topicSet := make(map[string]struct{}, len(topics))
+	for _, topic := range topics {
+		topicSet[topic] = struct{}{}
 	}
 	clientID := c.ClientID
 	if clientID == "" {
@@ -76,7 +81,7 @@ func (c Client) serve(ctx context.Context, handler func([]byte)) error {
 		return fmt.Errorf("MQTT connection rejected: header=0x%02x payload=%x", header, payload)
 	}
 
-	if err := writePacket(conn, 0x82, subscribePayload(1, c.Topic)); err != nil {
+	if err := writePacket(conn, 0x82, subscribePayload(1, topics)); err != nil {
 		return fmt.Errorf("send MQTT SUBSCRIBE: %w", err)
 	}
 
@@ -108,7 +113,7 @@ func (c Client) serve(ctx context.Context, handler func([]byte)) error {
 			if err != nil {
 				return err
 			}
-			if topic == c.Topic {
+			if _, ok := topicSet[topic]; ok {
 				handler(message)
 			}
 			if qos == 1 {
@@ -118,8 +123,13 @@ func (c Client) serve(ctx context.Context, handler func([]byte)) error {
 				}
 			}
 		case 9: // SUBACK
-			if len(payload) < 3 || payload[2] == 0x80 {
+			if len(payload) < 2+len(topics) {
 				return fmt.Errorf("MQTT subscription rejected: %x", payload)
+			}
+			for _, result := range payload[2:] {
+				if result == 0x80 {
+					return fmt.Errorf("MQTT subscription rejected: %x", payload)
+				}
 			}
 		case 13: // PINGRESP
 		default:
@@ -138,11 +148,30 @@ func connectPayload(clientID string) []byte {
 	return b.Bytes()
 }
 
-func subscribePayload(packetID uint16, topic string) []byte {
+func normalizedTopics(topics []string) []string {
+	seen := make(map[string]struct{}, len(topics))
+	out := make([]string, 0, len(topics))
+	for _, topic := range topics {
+		topic = strings.TrimSpace(topic)
+		if topic == "" {
+			continue
+		}
+		if _, ok := seen[topic]; ok {
+			continue
+		}
+		seen[topic] = struct{}{}
+		out = append(out, topic)
+	}
+	return out
+}
+
+func subscribePayload(packetID uint16, topics []string) []byte {
 	var b bytes.Buffer
 	_ = binary.Write(&b, binary.BigEndian, packetID)
-	writeUTF8(&b, topic)
-	b.WriteByte(0) // requested QoS 0
+	for _, topic := range topics {
+		writeUTF8(&b, topic)
+		b.WriteByte(0) // requested QoS 0
+	}
 	return b.Bytes()
 }
 

@@ -17,7 +17,7 @@ try {
     $env:GOARCH = "mipsle"
     $env:GOMIPS = "softfloat"
     $env:CGO_ENABLED = "0"
-    & $Go build -trimpath -ldflags "-s -w -X main.version=$Version" -o (Join-Path $OutputDir "mgl03-homekit-bridge") ./cmd/mgl03-homekit-bridge
+    & $Go build -buildvcs=false -trimpath -ldflags "-s -w -X main.version=$Version" -o (Join-Path $OutputDir "mgl03-homekit-bridge") ./cmd/mgl03-homekit-bridge
     if ($LASTEXITCODE -ne 0) {
         throw "Go build failed with exit code $LASTEXITCODE"
     }

@@ -2,6 +2,8 @@ module github.com/leathersocks/mgl03-homekit-bridge
 
 go 1.22
 
+replace github.com/brutella/dnssd => ./third_party/dnssd
+
 require github.com/brutella/hap v0.0.35
 
 require (

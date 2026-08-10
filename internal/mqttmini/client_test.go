@@ -27,3 +27,23 @@ func TestParsePublish(t *testing.T) {
 		t.Fatalf("topic=%q qos=%d message=%s", topic, qos, message)
 	}
 }
+
+func TestNormalizedTopics(t *testing.T) {
+	got := normalizedTopics([]string{" central/report ", "miio/report", "central/report", ""})
+	want := []string{"central/report", "miio/report"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("topics=%q want=%q", got, want)
+	}
+}
+
+func TestSubscribePayloadIncludesAllTopics(t *testing.T) {
+	got := subscribePayload(1, []string{"central/report", "miio/report"})
+	want := []byte{
+		0, 1,
+		0, 14, 'c', 'e', 'n', 't', 'r', 'a', 'l', '/', 'r', 'e', 'p', 'o', 'r', 't', 0,
+		0, 11, 'm', 'i', 'i', 'o', '/', 'r', 'e', 'p', 'o', 'r', 't', 0,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("payload=%x want=%x", got, want)
+	}
+}

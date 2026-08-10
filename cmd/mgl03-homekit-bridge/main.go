@@ -52,7 +52,7 @@ func run(configPath string) error {
 	updates := make(chan openmiio.Update, 64)
 	mqtt := mqttmini.Client{
 		Address:  cfg.MQTT.Address,
-		Topic:    cfg.MQTT.Topic,
+		Topics:   []string{cfg.MQTT.Topic, "miio/report"},
 		ClientID: cfg.MQTT.ClientID,
 		OnError:  func(err error) { log.Printf("MQTT: %v; reconnecting", err) },
 	}

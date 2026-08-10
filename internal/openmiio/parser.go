@@ -40,7 +40,8 @@ type envelope struct {
 }
 
 // Parse decodes the JSON messages published by openmiio_agent to
-// central/report. Unrelated devices and methods return an empty slice.
+// central/report or miio/report. Unrelated devices and methods return an empty
+// slice.
 func Parse(payload []byte) ([]Update, error) {
 	var env envelope
 	if err := json.Unmarshal(payload, &env); err != nil {
