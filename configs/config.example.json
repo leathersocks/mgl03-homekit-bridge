@@ -1,0 +1,12 @@
+{
+  "bridge_name": "MGL03 Bluetooth Bridge",
+  "pin": "19550224",
+  "port": 51826,
+  "state_dir": "/data/mgl03-homekit",
+  "mqtt": {
+    "address": "127.0.0.1:1883",
+    "topic": "central/report",
+    "client_id": "mgl03-homekit-bridge"
+  },
+  "devices": []
+}
