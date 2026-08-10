@@ -1,98 +1,102 @@
-# MGL03 HomeKit BLE bridge
+# MGL03 HomeKit BLE 브리지
 
-A small, Home Assistant-free bridge that runs directly on Xiaomi Gateway 3
-(`lumi.gateway.mgl03`). It converts BLE reports from the currently supported
-`miaomiaoce.sensor_ht.o2` / LYWSD02MMC sensor into native HomeKit temperature,
-humidity, and battery services.
+[English](README.en.md)
+
+Xiaomi Gateway 3(`lumi.gateway.mgl03`)에서 직접 실행되는 소형 브리지로,
+Home Assistant가 필요하지 않습니다. 현재 지원하는 `miaomiaoce.sensor_ht.o2` /
+LYWSD02MMC 센서의 BLE 보고를 네이티브 HomeKit 온도, 습도 및 배터리
+서비스로 변환합니다.
 
 ```text
 miaomiaoce.sensor_ht.o2
           │ BLE
           ▼
-Xiaomi Gateway 3 → openmiio_agent → local MQTT → this bridge → Apple Home
+Xiaomi Gateway 3 → openmiio_agent → 로컬 MQTT → 이 브리지 → Apple 홈
 ```
 
-## What works
+## 지원 기능
 
-- Exact Xiaomi product match: `pdid=5860`, model `miaomiaoce.sensor_ht.o2`.
-- Temperature, humidity, battery level, and low-battery status.
-- Automatic first-sensor discovery; no MAC address is needed in advance.
-- Persistent sensor identity and HomeKit pairing across restarts.
-- Native Linux MIPSLE/soft-float binary for MGL03.
-- No Home Assistant, Python runtime, Node.js runtime, or external MQTT library.
+- Xiaomi 제품을 정확히 식별: `pdid=5860`, 모델 `miaomiaoce.sensor_ht.o2`.
+- 온도, 습도, 배터리 잔량 및 배터리 부족 상태.
+- 첫 번째 센서 자동 검색. MAC 주소를 미리 알 필요가 없습니다.
+- 재시작 후에도 센서 식별 정보와 HomeKit 페어링 유지.
+- MGL03용 네이티브 Linux MIPSLE/soft-float 바이너리.
+- Home Assistant, Python 런타임, Node.js 런타임 또는 외부 MQTT 라이브러리가
+  필요하지 않습니다.
 
-The gateway acts as a HomeKit **accessory bridge**, not as Apple's Home hub.
-Local control from Apple Home works on the same LAN. Remote access and Home
-automations still require an Apple TV or HomePod configured as a home hub.
+게이트웨이는 Apple의 홈 허브가 아니라 HomeKit **액세서리 브리지**로
+동작합니다. 같은 LAN에서는 Apple 홈을 통한 로컬 제어가 가능합니다. 원격
+접속과 홈 자동화에는 홈 허브로 설정된 Apple TV 또는 HomePod가 여전히
+필요합니다.
 
-## Build
+## 빌드
 
-Go 1.22 or newer. The release binary for the 58 MiB MGL03 is built with Go
-1.25.12 and `GOMIPS=softfloat`:
+Go 1.22 이상이 필요합니다. 58 MiB MGL03용 릴리스 바이너리는 Go 1.25.12와
+`GOMIPS=softfloat` 설정으로 빌드합니다.
 
 ```powershell
 go test ./...
 ./scripts/build.ps1 -Version 0.1.0
 ```
 
-The MGL03 binary is written to `bin/mgl03-homekit-bridge`. Linux/macOS users can
-run `make test build-mgl03`.
+MGL03 바이너리는 `bin/mgl03-homekit-bridge`에 생성됩니다. Linux/macOS
+사용자는 `make test build-mgl03`을 실행할 수 있습니다.
 
-## Install
+## 설치
 
-See [docs/INSTALL.md](docs/INSTALL.md). At a high level:
+[docs/INSTALL.md](docs/INSTALL.md)를 참고하십시오. 전체 과정은 다음과
+같습니다.
 
-1. Build the MIPSLE bridge binary.
-2. On MGL03 firmware `1.5.0` through `1.5.4`, run the no-Telnet installer from
-   a PC on the same LAN and enter the 32-character miIO token at its hidden
-   prompt:
+1. MIPSLE 브리지 바이너리를 빌드합니다.
+2. MGL03 펌웨어 `1.5.0`부터 `1.5.4`까지는 같은 LAN의 PC에서 Telnet 없는
+   설치 프로그램을 실행하고, 숨김 프롬프트에 32자 miIO 토큰을 입력합니다.
 
    ```powershell
    py -m pip install -r requirements-installer.txt
    py .\scripts\install_no_telnet.py --gateway-ip 192.168.10.41
    ```
 
-3. Wait for the sensor's next BLE advertisement.
-4. Enter the random pairing code in Apple Home on a fresh installation.
+3. 센서의 다음 BLE 광고를 기다립니다.
+4. 새로 설치한 경우 Apple 홈에 무작위 페어링 코드를 입력합니다.
 
-The installer uses the firmware's local miIO `set_ip_info` path to make the
-gateway pull a checksum-verified, credential-free bundle from a temporary HTTP
-server on the PC. It never opens a Telnet session or enables TCP port 23.
-Existing `/data/mgl03-homekit` configuration, sensors, and HomeKit pairing are
-preserved during updates. See the installation guide for firmware limitations,
-rollback behavior, and the manual fallback.
+설치 프로그램은 펌웨어의 로컬 miIO `set_ip_info` 경로를 사용하여 게이트웨이가
+PC의 임시 HTTP 서버에서 체크섬 검증된 자격 증명 없는 번들을 가져오게 합니다.
+Telnet 세션을 열거나 TCP 23번 포트를 활성화하지 않습니다. 업데이트 중에도
+기존 `/data/mgl03-homekit` 구성, 센서 및 HomeKit 페어링을 보존합니다. 지원
+펌웨어 범위, 롤백 동작 및 수동 대체 방법은 설치 안내서를 참고하십시오.
 
-The first run creates a secure random pairing PIN and discovers the first
-matching sensor automatically. An editable example is available at
-[configs/config.example.json](configs/config.example.json).
+첫 실행 시 안전한 무작위 페어링 PIN을 만들고 일치하는 첫 번째 센서를 자동으로
+검색합니다. 편집 가능한 예제는
+[configs/config.example.json](configs/config.example.json)에 있습니다.
 
-## Design notes
+## 설계 참고 사항
 
-`openmiio_agent` publishes the MGL03 Bluetooth service's JSON to
-`central/report` or `miio/report`, depending on the stock firmware path. The
-bridge subscribes to both topics, accepts only PDID 5860 BLE events, and decodes
-the verified XiaomiGateway3 mappings. MIoT property updates are also accepted
-after the device DID is known. Details and sample payloads are in
-[docs/PROTOCOL.md](docs/PROTOCOL.md).
+`openmiio_agent`는 기본 펌웨어 경로에 따라 MGL03 Bluetooth 서비스의 JSON을
+`central/report` 또는 `miio/report`에 게시합니다. 브리지는 두 토픽을 모두
+구독하고 PDID 5860 BLE 이벤트만 허용하며, 검증된 XiaomiGateway3 매핑으로
+데이터를 해석합니다. 장치 DID를 확인한 뒤에는 MIoT 속성 업데이트도 허용합니다.
+자세한 내용과 샘플 페이로드는 [docs/PROTOCOL.md](docs/PROTOCOL.md)에 있습니다.
 
-HomeKit is implemented with the lightweight
-[`github.com/brutella/hap`](https://github.com/brutella/hap) library. The first
-HomeKit accessory is a bridge and the sensor keeps a stable accessory ID derived
-from its MAC address. The bundled dnssd v1.2.14 patch enables address reuse on
-Linux so the bridge can share mDNS port 5353 with the MGL03 stock HomeKit
-service; the stock service does not need to be stopped.
+HomeKit은 경량 [`github.com/brutella/hap`](https://github.com/brutella/hap)
+라이브러리로 구현합니다. 첫 번째 HomeKit 액세서리는 브리지이며, 센서는 MAC
+주소에서 파생한 안정적인 액세서리 ID를 유지합니다. 번들에 포함된 dnssd
+v1.2.14 패치는 Linux에서 주소 재사용을 활성화하므로, 브리지가 MGL03 기본
+HomeKit 서비스와 mDNS 5353번 포트를 공유할 수 있습니다. 기본 서비스를 중지할
+필요가 없습니다.
 
-## Security and recovery
+## 보안 및 복구
 
-- Keep MQTT bound to the gateway/LAN; never forward port 1883 from the router.
-- Back up `/data/mgl03-homekit` before firmware or bridge upgrades.
-- Firmware updates may remove the custom startup hook or disable the local miIO
-  installation path.
-- The no-Telnet installer is intentionally limited to MGL03 firmware
-  `1.5.0`-`1.5.4`; it refuses other models and versions.
-- The project does not patch the read-only firmware.
+- MQTT는 게이트웨이/LAN에만 바인딩하고, 라우터에서 1883번 포트를 포워딩하지
+  마십시오.
+- 펌웨어 또는 브리지를 업그레이드하기 전에 `/data/mgl03-homekit`을
+  백업하십시오.
+- 펌웨어 업데이트로 사용자 지정 시작 훅이 제거되거나 로컬 miIO 설치 경로가
+  비활성화될 수 있습니다.
+- Telnet 없는 설치 프로그램은 의도적으로 MGL03 펌웨어 `1.5.0`-`1.5.4`만
+  지원하며, 다른 모델과 버전에서는 실행을 거부합니다.
+- 이 프로젝트는 읽기 전용 펌웨어를 패치하지 않습니다.
 
-## Upstream references
+## 업스트림 참고 자료
 
 - [openmiio_agent](https://github.com/AlexxIT/openmiio_agent)
 - [XiaomiGateway3](https://github.com/AlexxIT/XiaomiGateway3)

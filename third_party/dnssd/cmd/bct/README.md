@@ -1,11 +1,18 @@
-# Bonjour Conformance Test
+# Bonjour 적합성 테스트
 
-The goal is to make `dnssd` fully compliant with [Bonjour](https://developer.apple.com/bonjour/) from Apple. We are using *Bonjour Conformance Test* (v1.5.0) to test our mDNS responder implementation.
+[English](README.en.md)
 
-I'm using a MacBook Pro running macOSS 10.12 (or higher) as a test machine, which is connected to a router. 
-The tested device is a Raspberry Pi 3 Model B also connected to the router.
+목표는 `dnssd`가 Apple의 [Bonjour](https://developer.apple.com/bonjour/)를
+완전히 준수하게 하는 것입니다. mDNS 응답기 구현을 테스트하기 위해 *Bonjour
+Conformance Test*(v1.5.0)를 사용합니다.
 
-There is a test implementation of a mDNS responder in `_cmd/bct/main.go` which is compiled for the RPi with `GOOS=linux GOARCH=arm GOARM=7 go build -o bct main.go`.
-Run the executable `bct` on the RPi while running multicast DNS tests (withou hot plugging – see #9) on the test machine with `sudo ./BonjourConformanceTest -S -M h -DD -E <router-ip>`.
+테스트 컴퓨터로 라우터에 연결된 macOS 10.12 이상 MacBook Pro를 사용합니다.
+테스트 대상 장치는 같은 라우터에 연결된 Raspberry Pi 3 Model B입니다.
 
-The latest test results can be found in `ConformanceTestResults`.
+`_cmd/bct/main.go`에는 mDNS 응답기 테스트 구현이 있으며,
+`GOOS=linux GOARCH=arm GOARM=7 go build -o bct main.go` 명령으로 RPi용으로
+컴파일합니다. RPi에서 `bct` 실행 파일을 실행하는 동시에 테스트 컴퓨터에서
+`sudo ./BonjourConformanceTest -S -M h -DD -E <router-ip>` 명령으로 멀티캐스트
+DNS 테스트를 실행합니다(핫 플러깅 제외, #9 참고).
+
+최신 테스트 결과는 `ConformanceTestResults`에서 확인할 수 있습니다.

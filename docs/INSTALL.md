@@ -1,23 +1,25 @@
-# MGL03 installation
+# MGL03 설치
 
-> This is a community integration. It is not Apple-certified and modifies the
-> software running on the gateway. Keep a recovery path for your MGL03 and do
-> not expose the openmiio MQTT port to the internet.
+[English](INSTALL.en.md)
 
-## Requirements
+> 이 프로젝트는 커뮤니티 통합 기능으로 Apple 인증 제품이 아니며, 게이트웨이에서
+> 실행되는 소프트웨어를 변경합니다. MGL03을 복구할 수단을 준비하고 openmiio
+> MQTT 포트를 인터넷에 노출하지 마십시오.
 
-- Xiaomi Gateway 3, model `lumi.gateway.mgl03`.
-- Firmware `1.5.0` through `1.5.4` and its 32-character miIO token for the
-  no-Telnet installer. Other firmware requires a compatible manual access
-  method.
-- Python 3 and `python-miio==0.5.12` on a PC in the same LAN.
-- `miaomiaoce.sensor_ht.o2` / LYWSD02MMC already visible to the gateway over
-  Bluetooth.
-- iPhone/iPad on the same LAN for initial HomeKit pairing.
+## 요구 사항
 
-## Install without Telnet
+- Xiaomi Gateway 3, 모델 `lumi.gateway.mgl03`.
+- Telnet 없는 설치 프로그램을 사용하려면 펌웨어 `1.5.0`부터 `1.5.4`까지와
+  해당 장치의 32자 miIO 토큰이 필요합니다. 다른 펌웨어에는 호환되는 수동 접속
+  방법이 필요합니다.
+- 같은 LAN의 PC에 Python 3 및 `python-miio==0.5.12`.
+- `miaomiaoce.sensor_ht.o2` / LYWSD02MMC가 Bluetooth를 통해 게이트웨이에
+  이미 표시되어 있어야 합니다.
+- 최초 HomeKit 페어링을 위한 같은 LAN의 iPhone/iPad.
 
-Build the MIPSLE bridge binary first, then install the PC-side dependency:
+## Telnet 없이 설치
+
+먼저 MIPSLE 브리지 바이너리를 빌드한 다음 PC 측 종속성을 설치합니다.
 
 ```powershell
 Set-Location C:\Git\mgl03-homekit-bridge
@@ -25,29 +27,28 @@ Set-Location C:\Git\mgl03-homekit-bridge
 py -m pip install -r .\requirements-installer.txt
 ```
 
-Run the installer. The token is entered at a hidden prompt and is never written
-to the bundle, command line, logs, or gateway filesystem:
+설치 프로그램을 실행합니다. 토큰은 숨김 프롬프트에서 입력하며 번들, 명령줄,
+로그 또는 게이트웨이 파일 시스템에 기록되지 않습니다.
 
 ```powershell
 py .\scripts\install_no_telnet.py --gateway-ip 192.168.10.41
 ```
 
-The installer performs the following operations without opening a Telnet
-session:
+설치 프로그램은 Telnet 세션을 열지 않고 다음 작업을 수행합니다.
 
-1. Verifies the model and supported firmware through local miIO.
-2. Downloads or verifies official `openmiio_agent` v1.2.1 for MIPS.
-3. Starts a temporary HTTP server containing only binaries and scripts—never
-   the token, Gateway Key, HomeKit PIN, or pairing state.
-4. Sends a short `set_ip_info` request that tells the gateway to pull the
-   bundle.
-5. Verifies every file with MD5 on the gateway, rejects unknown startup hooks,
-   atomically replaces runtime files, and rolls back if the bridge fails.
-6. Receives a one-time HTTP callback with the result and verifies TCP `51826`
-   when the bridge is ready.
+1. 로컬 miIO를 통해 모델과 지원 펌웨어를 확인합니다.
+2. 공식 MIPS용 `openmiio_agent` v1.2.1을 다운로드하거나 검증합니다.
+3. 바이너리와 스크립트만 포함한 임시 HTTP 서버를 시작합니다. 토큰, Gateway
+   Key, HomeKit PIN 또는 페어링 상태는 절대 포함하지 않습니다.
+4. 게이트웨이가 번들을 가져오도록 지시하는 짧은 `set_ip_info` 요청을
+   보냅니다.
+5. 게이트웨이에서 모든 파일의 MD5를 확인하고, 알 수 없는 시작 훅은 거부하며,
+   런타임 파일을 원자적으로 교체한 뒤 브리지 실행에 실패하면 롤백합니다.
+6. 일회성 HTTP 콜백으로 결과를 수신하고 브리지가 준비되면 TCP `51826`을
+   확인합니다.
 
-The temporary server selects a free port automatically. Override PC address or
-port only when routing or firewall policy requires it:
+임시 서버는 사용 가능한 포트를 자동으로 선택합니다. 라우팅 또는 방화벽 정책상
+필요할 때만 PC 주소나 포트를 지정하십시오.
 
 ```powershell
 py .\scripts\install_no_telnet.py `
@@ -56,9 +57,8 @@ py .\scripts\install_no_telnet.py `
   --http-port 8000
 ```
 
-If the PC cannot access GitHub during installation, supply a previously
-downloaded official MIPS binary. Its expected MD5 is
-`6c3f4dca62647b9d19a81e1ccaa5ccc0`:
+설치 중 PC에서 GitHub에 접속할 수 없다면 미리 다운로드한 공식 MIPS 바이너리를
+지정하십시오. 예상 MD5는 `6c3f4dca62647b9d19a81e1ccaa5ccc0`입니다.
 
 ```powershell
 py .\scripts\install_no_telnet.py `
@@ -66,24 +66,23 @@ py .\scripts\install_no_telnet.py `
   --openmiio-bin C:\path\to\openmiio_agent_mips
 ```
 
-This path is limited to `lumi.gateway.mgl03` firmware `1.5.0`-`1.5.4`. It
-refuses `1.5.5+`, which uses a different authenticated command, and never
-changes firmware. TCP port `23` remains closed. Existing
-`/data/mgl03-homekit/config.json`, `devices.json`, `hap`, and logs are preserved
-when updating an installed bridge.
+이 경로는 `lumi.gateway.mgl03` 펌웨어 `1.5.0`-`1.5.4`로 제한됩니다. 다른
+인증 명령을 사용하는 `1.5.5+`에서는 실행을 거부하며 펌웨어를 변경하지
+않습니다. TCP 23번 포트는 닫힌 상태로 유지됩니다. 설치된 브리지를 업데이트할
+때 기존 `/data/mgl03-homekit/config.json`, `devices.json`, `hap` 및 로그를
+보존합니다.
 
-## Manual Telnet fallback
+## 수동 Telnet 대체 방법
 
-Use this only when the no-Telnet installer does not support the installed
-firmware or when diagnosing a failed installation. Enable temporary shell
-access with a method appropriate for the exact firmware, then copy the same
-runtime files manually.
+설치된 펌웨어를 Telnet 없는 설치 프로그램이 지원하지 않거나 설치 실패를 진단할
+때만 사용하십시오. 해당 펌웨어에 맞는 방법으로 임시 셸 접속을 활성화한 다음,
+동일한 런타임 파일을 수동으로 복사합니다.
 
-### Copy files
+### 파일 복사
 
-Build the project on a computer, then copy these files to the gateway:
+컴퓨터에서 프로젝트를 빌드한 다음 다음 파일을 게이트웨이에 복사합니다.
 
-| Local file | MGL03 path |
+| 로컬 파일 | MGL03 경로 |
 |---|---|
 | `bin/mgl03-homekit-bridge` | `/data/mgl03-homekit-bridge` |
 | `scripts/start.sh` | `/data/mgl03-homekit-start.sh` |
@@ -91,7 +90,7 @@ Build the project on a computer, then copy these files to the gateway:
 | `scripts/startup.sh` | `/data/scripts/startup.sh` |
 | `scripts/cleanup.sh` | `/data/mgl03-homekit-cleanup.sh` |
 
-On the gateway:
+게이트웨이에서 실행합니다.
 
 ```sh
 mkdir -p /data/scripts
@@ -103,55 +102,54 @@ chmod 755 /data/mgl03-homekit-cleanup.sh
 tail -f /data/mgl03-homekit/bridge.log
 ```
 
-The original MGL03 has only about 58 MiB of usable RAM and no swap. The supplied
-start script therefore runs the bridge with one OS thread, a 16 MiB Go memory
-limit, and more frequent garbage collection. These defaults can be overridden
-by setting `GOMAXPROCS`, `GOMEMLIMIT`, or `GOGC` before invoking the script.
+초기 MGL03은 사용 가능한 RAM이 약 58 MiB뿐이며 스왑이 없습니다. 따라서 제공된
+시작 스크립트는 OS 스레드 1개, 16 MiB Go 메모리 제한 및 더 빈번한 가비지
+컬렉션 설정으로 브리지를 실행합니다. 스크립트를 호출하기 전에 `GOMAXPROCS`,
+`GOMEMLIMIT` 또는 `GOGC`를 설정하여 기본값을 변경할 수 있습니다.
 
-The script detects an existing `openmiio_agent` through `ps` because the stock
-BusyBox image does not provide `pidof`. It also waits briefly and returns a
-failure if either daemon exits during startup, so a printed `started` message
-means the bridge process is still alive.
+기본 BusyBox 이미지에는 `pidof`가 없으므로 스크립트는 `ps`를 통해 실행 중인
+`openmiio_agent`를 찾습니다. 두 데몬 중 하나라도 시작 중 종료되면 잠시 기다린
+뒤 실패를 반환합니다. 따라서 `started` 메시지가 표시되면 브리지 프로세스가
+여전히 실행 중이라는 뜻입니다.
 
-The first start creates `/data/mgl03-homekit/config.json` with a random pairing
-PIN, then waits for the first `miaomiaoce.sensor_ht.o2` advertisement. The log
-shows both the discovery and a pairing code in `XXX-XX-XXX` form. In Apple Home,
-choose **Add Accessory → More Options**, select **MGL03 Bluetooth Bridge**, and
-enter that code.
+첫 시작 시 무작위 페어링 PIN이 포함된 `/data/mgl03-homekit/config.json`을
+만든 다음 첫 번째 `miaomiaoce.sensor_ht.o2` 광고를 기다립니다. 로그에는 검색
+결과와 `XXX-XX-XXX` 형식의 페어링 코드가 함께 표시됩니다. Apple 홈에서
+**액세서리 추가 → 추가 옵션**을 선택하고 **MGL03 Bluetooth Bridge**를 고른
+다음 해당 코드를 입력하십시오.
 
-The discovered MAC and DID are saved in `/data/mgl03-homekit/devices.json`.
-Pairing keys are kept in `/data/mgl03-homekit/hap`; preserve both locations
-across reboots and upgrades.
+검색된 MAC과 DID는 `/data/mgl03-homekit/devices.json`에 저장됩니다. 페어링
+키는 `/data/mgl03-homekit/hap`에 보관되므로 재부팅과 업그레이드 시 두 위치를
+모두 보존하십시오.
 
-## More than one sensor
+## 여러 센서 사용
 
-Automatic discovery registers only the first matching sensor. For additional
-sensors, stop the bridge and add their MAC/DID entries to `config.json` using
-`configs/config.example.json` as a guide. Remove `devices.json` only if you
-intentionally want to rediscover the first sensor.
+자동 검색은 일치하는 첫 번째 센서만 등록합니다. 센서를 추가하려면 브리지를
+중지하고 `configs/config.example.json`을 참고하여 해당 MAC/DID 항목을
+`config.json`에 추가하십시오. 첫 번째 센서를 의도적으로 다시 검색하려는
+경우에만 `devices.json`을 삭제하십시오.
 
-## Autostart
+## 자동 시작
 
-The stock `1.5.0_0026` firmware has a read-only SquashFS root but its
-`/etc/init.d/rcS` checks `/data/scripts/startup.sh`. When that custom file is
-executable, it replaces the normal `/bin/startup.sh` command. The supplied
-wrapper schedules the bridge first, waits 30 seconds for the normal gateway
-services, and then transfers control to the stock command. This order matters
-because `/bin/startup.sh` remains resident instead of returning. HomeKit startup
-output is written to `/data/mgl03-homekit/startup.log`.
+기본 `1.5.0_0026` 펌웨어는 읽기 전용 SquashFS 루트를 사용하지만
+`/etc/init.d/rcS`에서 `/data/scripts/startup.sh`를 확인합니다. 이 사용자 지정
+파일이 실행 가능하면 일반 `/bin/startup.sh` 명령을 대신합니다. 제공된 래퍼는
+먼저 브리지 실행을 예약하고, 일반 게이트웨이 서비스를 위해 30초 기다린 다음,
+기본 명령으로 제어를 넘깁니다. `/bin/startup.sh`는 반환하지 않고 계속 실행되므로
+이 순서가 중요합니다. HomeKit 시작 출력은
+`/data/mgl03-homekit/startup.log`에 기록됩니다.
 
-Do not modify `/etc/init.d/rcS`. Copy the wrapper to the writable `/data`
-partition instead:
+`/etc/init.d/rcS`를 수정하지 마십시오. 대신 쓰기 가능한 `/data` 파티션에
+래퍼를 복사합니다.
 
 ```sh
 mkdir -p /data/scripts
 chmod 755 /data/scripts/startup.sh
 ```
 
-Only install the supplied wrapper when `/data/scripts/startup.sh` is absent. If
-that path already belongs to another customization, preserve its existing
-stock-startup handling and merge only the following asynchronous call instead
-of overwriting it:
+`/data/scripts/startup.sh`가 없을 때만 제공된 래퍼를 설치하십시오. 해당 경로를
+다른 사용자 지정 기능이 이미 사용 중이라면 기존 기본 시작 처리를 보존하고,
+덮어쓰는 대신 다음 비동기 호출만 병합하십시오.
 
 ```sh
 (
@@ -160,8 +158,7 @@ of overwriting it:
 ) >>/data/mgl03-homekit/startup.log 2>&1 &
 ```
 
-After rebooting, allow about one minute and verify both the boot wrapper and
-the bridge:
+재부팅 후 약 1분 기다린 다음 부팅 래퍼와 브리지를 모두 확인합니다.
 
 ```sh
 cat /data/mgl03-homekit/startup.log
@@ -170,38 +167,38 @@ ps | grep '[m]gl03-homekit-bridge'
 netstat -lnt | grep 51826
 ```
 
-Firmware updates can replace the boot layout or disable shell access. Recheck
-the hook after an update before relying on it.
+펌웨어 업데이트로 부팅 구성이 바뀌거나 셸 접속이 비활성화될 수 있습니다.
+업데이트 후에는 이 훅에 의존하기 전에 다시 확인하십시오.
 
-## Remove installation leftovers
+## 설치 잔여 파일 제거
 
-The cleanup script has an exact allowlist for obsolete test binaries, staging
-files, and superseded pairing backups created during MGL03 bring-up. It refuses
-to run if the live bridge, startup scripts, current configuration, device
-registry, or HomeKit state is missing. The first run is always a dry run:
+정리 스크립트에는 MGL03 초기 구성 과정에서 생성된 폐기된 테스트 바이너리,
+스테이징 파일 및 이전 페어링 백업만 정확히 지정한 허용 목록이 있습니다. 현재
+브리지, 시작 스크립트, 구성, 장치 레지스트리 또는 HomeKit 상태가 없으면 실행을
+거부합니다. 첫 실행은 항상 모의 실행입니다.
 
 ```sh
 /data/mgl03-homekit-cleanup.sh
 ```
 
-Review the reported paths, then apply the cleanup:
+보고된 경로를 검토한 다음 정리를 적용합니다.
 
 ```sh
 /data/mgl03-homekit-cleanup.sh --apply
 ```
 
-The pre-multisensor device registry backup is retained by default. Remove it
-only after confirming all configured sensors work:
+여러 센서를 등록하기 전의 장치 레지스트리 백업은 기본적으로 유지됩니다. 구성된
+모든 센서가 작동하는지 확인한 뒤에만 제거하십시오.
 
 ```sh
 /data/mgl03-homekit-cleanup.sh --apply --include-recovery
 ```
 
-Current binaries, pairing state, three-sensor registry, PID file, and active
-bridge/openmiio/startup logs are never cleanup targets.
+현재 바이너리, 페어링 상태, 센서 3개 레지스트리, PID 파일 및 사용 중인
+브리지/openmiio/시작 로그는 정리 대상이 아닙니다.
 
-## Reset HomeKit pairing
+## HomeKit 페어링 초기화
 
-Stop the bridge, make a backup, then remove only
-`/data/mgl03-homekit/hap`. Start the bridge and pair again. Keep
-`devices.json` unless sensor discovery must also be reset.
+브리지를 중지하고 백업한 다음 `/data/mgl03-homekit/hap`만 삭제하십시오.
+브리지를 시작하고 다시 페어링합니다. 센서 검색도 초기화해야 하는 경우가 아니면
+`devices.json`을 유지하십시오.

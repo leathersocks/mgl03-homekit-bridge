@@ -1,0 +1,101 @@
+# MGL03 HomeKit BLE bridge
+
+[한국어](README.md)
+
+A small, Home Assistant-free bridge that runs directly on Xiaomi Gateway 3
+(`lumi.gateway.mgl03`). It converts BLE reports from the currently supported
+`miaomiaoce.sensor_ht.o2` / LYWSD02MMC sensor into native HomeKit temperature,
+humidity, and battery services.
+
+```text
+miaomiaoce.sensor_ht.o2
+          │ BLE
+          ▼
+Xiaomi Gateway 3 → openmiio_agent → local MQTT → this bridge → Apple Home
+```
+
+## What works
+
+- Exact Xiaomi product match: `pdid=5860`, model `miaomiaoce.sensor_ht.o2`.
+- Temperature, humidity, battery level, and low-battery status.
+- Automatic first-sensor discovery; no MAC address is needed in advance.
+- Persistent sensor identity and HomeKit pairing across restarts.
+- Native Linux MIPSLE/soft-float binary for MGL03.
+- No Home Assistant, Python runtime, Node.js runtime, or external MQTT library.
+
+The gateway acts as a HomeKit **accessory bridge**, not as Apple's Home hub.
+Local control from Apple Home works on the same LAN. Remote access and Home
+automations still require an Apple TV or HomePod configured as a home hub.
+
+## Build
+
+Go 1.22 or newer. The release binary for the 58 MiB MGL03 is built with Go
+1.25.12 and `GOMIPS=softfloat`:
+
+```powershell
+go test ./...
+./scripts/build.ps1 -Version 0.1.0
+```
+
+The MGL03 binary is written to `bin/mgl03-homekit-bridge`. Linux/macOS users can
+run `make test build-mgl03`.
+
+## Install
+
+See [docs/INSTALL.en.md](docs/INSTALL.en.md). At a high level:
+
+1. Build the MIPSLE bridge binary.
+2. On MGL03 firmware `1.5.0` through `1.5.4`, run the no-Telnet installer from
+   a PC on the same LAN and enter the 32-character miIO token at its hidden
+   prompt:
+
+   ```powershell
+   py -m pip install -r requirements-installer.txt
+   py .\scripts\install_no_telnet.py --gateway-ip 192.168.10.41
+   ```
+
+3. Wait for the sensor's next BLE advertisement.
+4. Enter the random pairing code in Apple Home on a fresh installation.
+
+The installer uses the firmware's local miIO `set_ip_info` path to make the
+gateway pull a checksum-verified, credential-free bundle from a temporary HTTP
+server on the PC. It never opens a Telnet session or enables TCP port 23.
+Existing `/data/mgl03-homekit` configuration, sensors, and HomeKit pairing are
+preserved during updates. See the installation guide for firmware limitations,
+rollback behavior, and the manual fallback.
+
+The first run creates a secure random pairing PIN and discovers the first
+matching sensor automatically. An editable example is available at
+[configs/config.example.json](configs/config.example.json).
+
+## Design notes
+
+`openmiio_agent` publishes the MGL03 Bluetooth service's JSON to
+`central/report` or `miio/report`, depending on the stock firmware path. The
+bridge subscribes to both topics, accepts only PDID 5860 BLE events, and decodes
+the verified XiaomiGateway3 mappings. MIoT property updates are also accepted
+after the device DID is known. Details and sample payloads are in
+[docs/PROTOCOL.en.md](docs/PROTOCOL.en.md).
+
+HomeKit is implemented with the lightweight
+[`github.com/brutella/hap`](https://github.com/brutella/hap) library. The first
+HomeKit accessory is a bridge and the sensor keeps a stable accessory ID derived
+from its MAC address. The bundled dnssd v1.2.14 patch enables address reuse on
+Linux so the bridge can share mDNS port 5353 with the MGL03 stock HomeKit
+service; the stock service does not need to be stopped.
+
+## Security and recovery
+
+- Keep MQTT bound to the gateway/LAN; never forward port 1883 from the router.
+- Back up `/data/mgl03-homekit` before firmware or bridge upgrades.
+- Firmware updates may remove the custom startup hook or disable the local miIO
+  installation path.
+- The no-Telnet installer is intentionally limited to MGL03 firmware
+  `1.5.0`-`1.5.4`; it refuses other models and versions.
+- The project does not patch the read-only firmware.
+
+## Upstream references
+
+- [openmiio_agent](https://github.com/AlexxIT/openmiio_agent)
+- [XiaomiGateway3](https://github.com/AlexxIT/XiaomiGateway3)
+- [brutella/hap](https://github.com/brutella/hap)
