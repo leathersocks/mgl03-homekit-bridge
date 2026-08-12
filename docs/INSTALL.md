@@ -109,9 +109,9 @@ tail -f /data/mgl03-homekit/bridge.log
 컬렉션 설정으로 브리지를 실행합니다. 스크립트를 호출하기 전에 `GOMAXPROCS`,
 `GOMEMLIMIT` 또는 `GOGC`를 설정하여 기본값을 변경할 수 있습니다.
 
-스크립트는 `pidof`와 `/proc/<pid>/cmdline`을 함께 확인하여 PID가 재사용되거나
-필수 `miio central mqtt cache` 인수 없이 실행된 `openmiio_agent`를 정상
-프로세스로 오인하지 않습니다. 두 데몬 중 하나라도 시작 중 종료되면 실패를
+스크립트는 `pidof`가 없는 기본 BusyBox에서도 `/proc/[0-9]*/cmdline`을 직접
+확인하여 필수 `miio central mqtt cache` 인수 없이 실행된 `openmiio_agent`를
+정상 프로세스로 오인하지 않습니다. 두 데몬 중 하나라도 시작 중 종료되면 실패를
 반환합니다.
 
 첫 시작 시 무작위 페어링 PIN이 포함된 `/data/mgl03-homekit/config.json`을

@@ -10,13 +10,13 @@ LOG_FILE="$STATE_DIR/bridge.log"
 PID_FILE="$STATE_DIR/bridge.pid"
 
 openmiio_is_running() {
-    for PID in $(pidof openmiio_agent 2>/dev/null); do
-        if [ -r "/proc/$PID/cmdline" ]; then
-            CMDLINE=$(tr '\000' ' ' < "/proc/$PID/cmdline")
-            case "$CMDLINE" in
-                *miio*central*mqtt*cache*|*miio*mqtt*cache*central*) return 0 ;;
-            esac
-        fi
+    for CMDLINE_FILE in /proc/[0-9]*/cmdline; do
+        [ -r "$CMDLINE_FILE" ] || continue
+        CMDLINE=$(tr '\000' ' ' < "$CMDLINE_FILE")
+        case "$CMDLINE" in
+            "$OPENMIIO_BIN "*miio*central*mqtt*cache*|\
+            "$OPENMIIO_BIN "*miio*mqtt*cache*central*) return 0 ;;
+        esac
     done
     return 1
 }

@@ -111,10 +111,10 @@ start script therefore runs the bridge with one OS thread, a 16 MiB Go memory
 limit, and more frequent garbage collection. These defaults can be overridden
 by setting `GOMAXPROCS`, `GOMEMLIMIT`, or `GOGC` before invoking the script.
 
-The script combines `pidof` with `/proc/<pid>/cmdline` validation so PID reuse or
-an `openmiio_agent` missing the required `miio central mqtt cache` arguments is
-not mistaken for a healthy process. It returns a failure if either daemon exits
-during startup.
+The script scans `/proc/[0-9]*/cmdline` directly, including on the stock BusyBox
+image where `pidof` is absent, so an `openmiio_agent` missing the required
+`miio central mqtt cache` arguments is not mistaken for a healthy process. It
+returns a failure if either daemon exits during startup.
 
 The first start creates `/data/mgl03-homekit/config.json` with a random pairing
 PIN, then collects `miaomiaoce.sensor_ht.o2` advertisements for 30 seconds. The

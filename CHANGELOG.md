@@ -60,6 +60,8 @@
 - 종료 스크립트가 브리지의 정상 종료를 기다리지 않고 PID 파일을 제거하던 문제.
 - Linux amd64에서 `syscall.SO_REUSEPORT`가 정의되지 않아 GitHub Actions 빌드가
   실패하던 문제. 아키텍처별 값을 제공하는 `x/sys/unix`를 사용하도록 변경.
+- 기본 MGL03 BusyBox에 `pidof`가 없어 기존 openmiio 프로세스를 감지하지 못하던
+  문제. `/proc/[0-9]*/cmdline`을 직접 검사하도록 변경.
 
 ## 초기 개발 - 2026-08-10 ~ 2026-08-11
 

@@ -71,6 +71,8 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
 - GitHub Actions failing to compile on Linux amd64 because
   `syscall.SO_REUSEPORT` is not defined there; socket options now use the
   architecture-specific constants from `x/sys/unix`.
+- Failure to detect an existing openmiio process because the stock MGL03 BusyBox
+  lacks `pidof`; startup now scans `/proc/[0-9]*/cmdline` directly.
 
 ## Initial development - 2026-08-10 to 2026-08-11
 
