@@ -54,9 +54,10 @@ already configured or discovered sensor.
 
 The bridge tracks `frmCnt` per MAC/DID. Duplicate frames published on both MQTT
 topics and clearly older frames are ignored; the counter baseline resets after
-ten minutes of silence to permit sensor reboot or battery replacement. MQTT
-disconnects and reports older than `sensor_offline_seconds` are reflected in
-HomeKit's active/fault characteristics.
+ten minutes of silence to permit sensor reboot or battery replacement. During
+a temporary MQTT disconnect, the bridge keeps the last accepted HomeKit values
+while reconnecting in the background. HomeKit determines unreachability from
+the bridge connection itself.
 
 ## References
 

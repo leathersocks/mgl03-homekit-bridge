@@ -3,6 +3,7 @@ package bridge
 import (
 	"testing"
 
+	"github.com/brutella/hap/characteristic"
 	"github.com/leathersocks/mgl03-homekit-bridge/internal/config"
 )
 
@@ -22,14 +23,18 @@ func TestConfiguredAIDTakesPrecedence(t *testing.T) {
 	}
 }
 
-func TestSensorActivityCharacteristics(t *testing.T) {
+func TestSensorDoesNotExposePerServiceAvailability(t *testing.T) {
 	sensor := NewSensor(config.Device{MAC: "aa:bb:cc:dd:ee:ff"})
-	sensor.MarkActive(true)
-	if !sensor.temperatureActive.Value() || !sensor.humidityActive.Value() {
-		t.Fatal("active state was not exposed")
+	services := []*struct {
+		name string
+		c    func(string) *characteristic.C
+	}{
+		{name: "temperature", c: sensor.temperature.C},
+		{name: "humidity", c: sensor.humidity.C},
 	}
-	sensor.MarkActive(false)
-	if sensor.temperatureActive.Value() || sensor.humidityActive.Value() {
-		t.Fatal("inactive state was not exposed")
+	for _, service := range services {
+		if service.c(characteristic.TypeStatusActive) != nil || service.c(characteristic.TypeStatusFault) != nil {
+			t.Fatalf("%s service exposes availability characteristics", service.name)
+		}
 	}
 }

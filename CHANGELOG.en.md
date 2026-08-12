@@ -23,9 +23,6 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
   spreading PDID checks through the runtime.
 - Duplicate and out-of-order BLE frame filtering based on `frmCnt`, with the
   baseline reset after ten minutes without a report.
-- HomeKit active and fault status driven by MQTT connectivity and sensor
-  last-seen time.
-- A `sensor_offline_seconds` setting, defaulting to 900 seconds.
 - GitHub Actions checks for Go formatting, tests and vet, Python installer
   tests, ShellCheck, the MIPSLE build, binary size, and SHA-256 output.
 
@@ -42,7 +39,7 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
 - The no-Telnet installer's HomeKit port readiness window is now 60 seconds to
   allow time for multi-sensor discovery.
 - Korean and English README, installation, and protocol documentation now
-  describe the new enrollment and status policies.
+  describe the new enrollment policy.
 
 ### Security
 
@@ -59,9 +56,12 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- All bridged sensors appearing as No Response after startup or a short MQTT
+  reconnect. Optional per-service active/fault characteristics were removed;
+  HomeKit now relies on the bridge connection and retains the last accepted
+  readings during transient MQTT gaps.
 - Duplicate HomeKit updates when the same BLE report arrives through both
   `central/report` and `miio/report`.
-- Sensors remaining apparently healthy after MQTT disconnects.
 - Out-of-range values being accepted through the MIoT temperature, humidity,
   and battery fallback path.
 - Startup mistaking an `openmiio_agent` process without the required

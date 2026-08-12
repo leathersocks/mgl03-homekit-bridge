@@ -75,8 +75,9 @@ permission-restricted log. An editable example is available at
 `discovery.mode` accepts `auto`, `first`, or `manual`. `auto` enrolls multiple
 sensors during the startup window and records newly observed supported sensors
 for exposure after the next bridge restart. Configurations created by older
-versions retain the legacy `first` behavior. A sensor is marked inactive in
-HomeKit when MQTT disconnects or no report arrives for `sensor_offline_seconds`.
+versions retain the legacy `first` behavior. During a temporary MQTT disconnect,
+HomeKit retains the last accepted sensor values while the bridge reconnects in
+the background.
 
 ## Design notes
 

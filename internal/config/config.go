@@ -16,7 +16,6 @@ const (
 	DefaultBroker                 = "127.0.0.1:1883"
 	DefaultTopic                  = "central/report"
 	DefaultPort                   = 51826
-	DefaultSensorOfflineSeconds   = 15 * 60
 	DefaultDiscoveryWindowSeconds = 30
 
 	DiscoveryModeFirst  = "first"
@@ -45,15 +44,14 @@ type Discovery struct {
 }
 
 type Config struct {
-	BridgeName           string    `json:"bridge_name"`
-	Pin                  string    `json:"pin"`
-	Port                 int       `json:"port"`
-	Interfaces           []string  `json:"interfaces,omitempty"`
-	StateDir             string    `json:"state_dir"`
-	SensorOfflineSeconds int       `json:"sensor_offline_seconds,omitempty"`
-	Discovery            Discovery `json:"discovery,omitempty"`
-	MQTT                 MQTT      `json:"mqtt"`
-	Devices              []Device  `json:"devices,omitempty"`
+	BridgeName string    `json:"bridge_name"`
+	Pin        string    `json:"pin"`
+	Port       int       `json:"port"`
+	Interfaces []string  `json:"interfaces,omitempty"`
+	StateDir   string    `json:"state_dir"`
+	Discovery  Discovery `json:"discovery,omitempty"`
+	MQTT       MQTT      `json:"mqtt"`
+	Devices    []Device  `json:"devices,omitempty"`
 }
 
 func Defaults(configPath string) (Config, error) {
@@ -66,11 +64,10 @@ func Defaults(configPath string) (Config, error) {
 		stateDir = "state"
 	}
 	return Config{
-		BridgeName:           "MGL03 Bluetooth Bridge",
-		Pin:                  pin,
-		Port:                 DefaultPort,
-		StateDir:             stateDir,
-		SensorOfflineSeconds: DefaultSensorOfflineSeconds,
+		BridgeName: "MGL03 Bluetooth Bridge",
+		Pin:        pin,
+		Port:       DefaultPort,
+		StateDir:   stateDir,
 		Discovery: Discovery{
 			Mode:          DiscoveryModeAuto,
 			WindowSeconds: DefaultDiscoveryWindowSeconds,
@@ -128,12 +125,6 @@ func (c *Config) NormalizeAndValidate(configPath string) error {
 		if c.StateDir == "." || c.StateDir == "" {
 			c.StateDir = "state"
 		}
-	}
-	if c.SensorOfflineSeconds == 0 {
-		c.SensorOfflineSeconds = DefaultSensorOfflineSeconds
-	}
-	if c.SensorOfflineSeconds < 60 || c.SensorOfflineSeconds > 24*60*60 {
-		return fmt.Errorf("sensor_offline_seconds must be between 60 and 86400")
 	}
 	c.Discovery.Mode = strings.ToLower(strings.TrimSpace(c.Discovery.Mode))
 	if c.Discovery.Mode == "" {

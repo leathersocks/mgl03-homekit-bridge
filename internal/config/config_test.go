@@ -22,9 +22,6 @@ func TestNormalizeAndValidate(t *testing.T) {
 	if cfg.Discovery.Mode != DiscoveryModeFirst {
 		t.Fatalf("legacy discovery mode = %q", cfg.Discovery.Mode)
 	}
-	if cfg.SensorOfflineSeconds != DefaultSensorOfflineSeconds {
-		t.Fatalf("offline seconds = %d", cfg.SensorOfflineSeconds)
-	}
 }
 
 func TestNewDefaultsUseAutoDiscovery(t *testing.T) {

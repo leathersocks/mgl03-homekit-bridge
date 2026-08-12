@@ -3,7 +3,6 @@
   "pin": "19550224",
   "port": 51826,
   "state_dir": "/data/mgl03-homekit",
-  "sensor_offline_seconds": 900,
   "discovery": {
     "mode": "auto",
     "window_seconds": 30

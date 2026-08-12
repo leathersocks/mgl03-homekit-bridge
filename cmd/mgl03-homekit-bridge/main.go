@@ -53,18 +53,6 @@ func run(configPath string) error {
 	defer stop()
 
 	updates := make(chan openmiio.Update, 128)
-	mqttStates := make(chan bool, 1)
-	setMQTTState := func(connected bool) {
-		select {
-		case mqttStates <- connected:
-		default:
-			select {
-			case <-mqttStates:
-			default:
-			}
-			mqttStates <- connected
-		}
-	}
 	droppedUpdates := 0
 	lastDropLog := time.Time{}
 	mqtt := mqttmini.Client{
@@ -72,7 +60,6 @@ func run(configPath string) error {
 		Topics:   []string{cfg.MQTT.Topic, "miio/report", "openmiio/report"},
 		ClientID: cfg.MQTT.ClientID,
 		OnError:  func(err error) { log.Printf("MQTT: %v; reconnecting", err) },
-		OnState:  setMQTTState,
 	}
 	go mqtt.Run(ctx, func(payload []byte) {
 		parsed, parseErr := openmiio.Parse(payload)
@@ -133,7 +120,7 @@ func run(configPath string) error {
 		accessories = append(accessories, sensor.Accessory)
 	}
 
-	go processUpdates(ctx, updates, mqttStates, sensors, deduplicator, initialUpdates, cfg, registryPath, devices)
+	go processUpdates(ctx, updates, sensors, deduplicator, initialUpdates, cfg, registryPath, devices)
 
 	hapDir := filepath.Join(cfg.StateDir, "hap")
 	if err := os.MkdirAll(hapDir, 0o700); err != nil {
@@ -156,7 +143,6 @@ func run(configPath string) error {
 func processUpdates(
 	ctx context.Context,
 	updates <-chan openmiio.Update,
-	mqttStates <-chan bool,
 	sensors []*bridge.Sensor,
 	deduplicator *openmiio.Deduplicator,
 	initial map[string]openmiio.Update,
@@ -165,39 +151,16 @@ func processUpdates(
 	devices []config.Device,
 ) {
 	unknown := make(map[string]bool)
-	lastSeen := make(map[*bridge.Sensor]time.Time, len(sensors))
 	for key, update := range initial {
 		if sensor := matchSensor(sensors, update); sensor != nil {
 			sensor.Apply(update)
-			lastSeen[sensor] = time.Now()
 		}
 		delete(initial, key)
 	}
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-	mqttConnected := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case connected := <-mqttStates:
-			mqttConnected = connected
-			if !connected {
-				for _, sensor := range sensors {
-					sensor.MarkActive(false)
-				}
-			}
-		case now := <-ticker.C:
-			if !mqttConnected {
-				continue
-			}
-			offlineAfter := time.Duration(cfg.SensorOfflineSeconds) * time.Second
-			for _, sensor := range sensors {
-				seenAt := lastSeen[sensor]
-				if seenAt.IsZero() || now.Sub(seenAt) >= offlineAfter {
-					sensor.MarkActive(false)
-				}
-			}
 		case update := <-updates:
 			if !deduplicator.Accept(update) {
 				continue
@@ -225,7 +188,6 @@ func processUpdates(
 				continue
 			}
 			sensor.Apply(update)
-			lastSeen[sensor] = time.Now()
 		}
 	}
 }
