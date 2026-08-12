@@ -20,14 +20,15 @@ const (
 )
 
 type Update struct {
-	DID         string
-	MAC         string
-	ProductID   int
-	Model       string
-	FrameCount  int
-	Temperature *float64
-	Humidity    *float64
-	Battery     *int
+	DID           string
+	MAC           string
+	ProductID     int
+	Model         string
+	FrameCount    int
+	HasFrameCount bool
+	Temperature   *float64
+	Humidity      *float64
+	Battery       *int
 }
 
 func (u Update) HasMeasurements() bool {
@@ -73,16 +74,18 @@ func parseBLEEvent(raw json.RawMessage) ([]Update, error) {
 	if err := json.Unmarshal(raw, &event); err != nil {
 		return nil, fmt.Errorf("decode BLE event: %w", err)
 	}
-	if event.Dev.PDID != ProductIDSensorHTO2 {
+	product, ok := LookupProduct(event.Dev.PDID)
+	if !ok {
 		return nil, nil
 	}
 
 	u := Update{
-		DID:        event.Dev.DID,
-		MAC:        NormalizeMAC(event.Dev.MAC),
-		ProductID:  event.Dev.PDID,
-		Model:      ModelSensorHTO2,
-		FrameCount: event.FrameCount,
+		DID:           event.Dev.DID,
+		MAC:           NormalizeMAC(event.Dev.MAC),
+		ProductID:     event.Dev.PDID,
+		Model:         product.Model,
+		FrameCount:    event.FrameCount,
+		HasFrameCount: true,
 	}
 	var decodeErrors []string
 	for _, item := range event.Events {
@@ -172,12 +175,21 @@ func parseMIoTProperties(raw json.RawMessage) ([]Update, error) {
 		switch kind {
 		case "temperature":
 			v := math.Round(value*10) / 10
+			if v < -100 || v > 150 {
+				return nil, fmt.Errorf("decode MIoT temperature for %s: out of range %.1f", prop.DID, v)
+			}
 			u.Temperature = &v
 		case "humidity":
 			v := math.Round(value*10) / 10
+			if v < 0 || v > 100 {
+				return nil, fmt.Errorf("decode MIoT humidity for %s: out of range %.1f", prop.DID, v)
+			}
 			u.Humidity = &v
 		case "battery":
 			v := int(math.Round(value))
+			if v < 0 || v > 100 {
+				return nil, fmt.Errorf("decode MIoT battery for %s: out of range %d", prop.DID, v)
+			}
 			u.Battery = &v
 		}
 	}

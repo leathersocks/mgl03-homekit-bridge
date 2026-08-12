@@ -17,6 +17,22 @@ file_md5() {
     md5sum "$1" | cut -d ' ' -f 1
 }
 
+file_sha256() {
+    sha256sum "$1" 2>/dev/null | cut -d ' ' -f 1
+}
+
+verify_file() {
+    FILE=$1
+    EXPECTED_SHA256=$2
+    EXPECTED_MD5=$3
+    ACTUAL_SHA256=$(file_sha256 "$FILE")
+    if [ -n "$ACTUAL_SHA256" ]; then
+        [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ]
+        return $?
+    fi
+    [ "$(file_md5 "$FILE")" = "$EXPECTED_MD5" ]
+}
+
 allowed_destination() {
     case "$1" in
         /data/openmiio_agent|\
@@ -60,25 +76,28 @@ discard_backups() {
     done < "$CHANGES_FILE"
 }
 
-if [ "$#" -ne 2 ]; then
-    fail "usage: install-on-device.sh BASE_URL MANIFEST_MD5" 2
+if [ "$#" -ne 3 ]; then
+    fail "usage: install-on-device.sh BASE_URL MANIFEST_SHA256 MANIFEST_MD5" 2
 fi
 
 BASE_URL=$1
-EXPECTED_MANIFEST_MD5=$2
+EXPECTED_MANIFEST_SHA256=$2
+EXPECTED_MANIFEST_MD5=$3
 
 case "$BASE_URL" in
     http://*) ;;
     *) fail "BASE_URL must use HTTP on the trusted local network" 3 ;;
 esac
 
-case "$EXPECTED_MANIFEST_MD5" in
-    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
-    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
-    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
-    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
-    *) fail "MANIFEST_MD5 must be 32 lowercase hexadecimal characters" 4 ;;
+if [ "${#EXPECTED_MANIFEST_SHA256}" -ne 64 ]; then
+    fail "MANIFEST_SHA256 must be 64 lowercase hexadecimal characters" 4
+fi
+case "$EXPECTED_MANIFEST_SHA256$EXPECTED_MANIFEST_MD5" in
+    *[!0-9a-f]*) fail "manifest checksums must be lowercase hexadecimal" 4 ;;
 esac
+if [ "${#EXPECTED_MANIFEST_MD5}" -ne 32 ]; then
+    fail "MANIFEST_MD5 must be 32 lowercase hexadecimal characters" 4
+fi
 
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR" /data/scripts || fail "create staging directories" 5
@@ -86,15 +105,14 @@ mkdir -p "$STAGING_DIR" /data/scripts || fail "create staging directories" 5
 wget -O "$MANIFEST_FILE.new" "$BASE_URL/manifest.txt" || \
     fail "download manifest" 10
 
-ACTUAL_MANIFEST_MD5=$(file_md5 "$MANIFEST_FILE.new")
-if [ "$ACTUAL_MANIFEST_MD5" != "$EXPECTED_MANIFEST_MD5" ]; then
+if ! verify_file "$MANIFEST_FILE.new" "$EXPECTED_MANIFEST_SHA256" "$EXPECTED_MANIFEST_MD5"; then
     fail "manifest checksum mismatch" 11
 fi
 mv "$MANIFEST_FILE.new" "$MANIFEST_FILE" || fail "activate manifest" 12
 
 echo "downloading and verifying installation artifacts"
-while read -r EXPECTED_MD5 MODE NAME DESTINATION EXTRA; do
-    [ -n "$EXPECTED_MD5" ] || continue
+while read -r EXPECTED_SHA256 EXPECTED_MD5 MODE NAME DESTINATION EXTRA; do
+    [ -n "$EXPECTED_SHA256" ] || continue
     [ -z "$EXTRA" ] || fail "malformed manifest entry for $NAME" 13
 
     allowed_destination "$DESTINATION" || \
@@ -113,14 +131,13 @@ while read -r EXPECTED_MD5 MODE NAME DESTINATION EXTRA; do
     wget -O "$STAGED_FILE" "$BASE_URL/$NAME" || \
         fail "download artifact: $NAME" 17
 
-    ACTUAL_MD5=$(file_md5 "$STAGED_FILE")
-    if [ "$ACTUAL_MD5" != "$EXPECTED_MD5" ]; then
+    if ! verify_file "$STAGED_FILE" "$EXPECTED_SHA256" "$EXPECTED_MD5"; then
         fail "artifact checksum mismatch: $NAME" 18
     fi
 done < "$MANIFEST_FILE"
 
 NEW_STARTUP_MD5=
-while read -r EXPECTED_MD5 MODE NAME DESTINATION EXTRA; do
+while read -r EXPECTED_SHA256 EXPECTED_MD5 MODE NAME DESTINATION EXTRA; do
     if [ "$DESTINATION" = "/data/scripts/startup.sh" ]; then
         NEW_STARTUP_MD5=$EXPECTED_MD5
         break
@@ -144,8 +161,8 @@ fi
 
 : > "$CHANGES_FILE"
 INSTALL_FAILED=0
-while read -r EXPECTED_MD5 MODE NAME DESTINATION EXTRA; do
-    [ -n "$EXPECTED_MD5" ] || continue
+while read -r EXPECTED_SHA256 EXPECTED_MD5 MODE NAME DESTINATION EXTRA; do
+    [ -n "$EXPECTED_SHA256" ] || continue
     STAGED_FILE="$STAGING_DIR/$NAME"
 
     if [ -e "$DESTINATION" ]; then

@@ -14,3 +14,22 @@ func TestStableID(t *testing.T) {
 		t.Fatalf("ids: %d %d %d", a, b, c)
 	}
 }
+
+func TestConfiguredAIDTakesPrecedence(t *testing.T) {
+	device := config.Device{MAC: "aa:bb:cc:dd:ee:ff", AID: 42}
+	if got := accessoryID(device); got != 42 {
+		t.Fatalf("aid = %d", got)
+	}
+}
+
+func TestSensorActivityCharacteristics(t *testing.T) {
+	sensor := NewSensor(config.Device{MAC: "aa:bb:cc:dd:ee:ff"})
+	sensor.MarkActive(true)
+	if !sensor.temperatureActive.Value() || !sensor.humidityActive.Value() {
+		t.Fatal("active state was not exposed")
+	}
+	sensor.MarkActive(false)
+	if sensor.temperatureActive.Value() || sensor.humidityActive.Value() {
+		t.Fatal("inactive state was not exposed")
+	}
+}

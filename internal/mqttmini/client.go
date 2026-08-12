@@ -19,6 +19,7 @@ type Client struct {
 	Topics   []string
 	ClientID string
 	OnError  func(error)
+	OnState  func(connected bool)
 }
 
 // Run maintains an MQTT 3.1.1 subscription until ctx is cancelled. It uses
@@ -27,12 +28,19 @@ type Client struct {
 func (c Client) Run(ctx context.Context, handler func(payload []byte)) {
 	backoff := time.Second
 	for ctx.Err() == nil {
+		started := time.Now()
 		err := c.serve(ctx, handler)
+		if c.OnState != nil {
+			c.OnState(false)
+		}
 		if ctx.Err() != nil {
 			return
 		}
 		if err != nil && c.OnError != nil {
 			c.OnError(err)
+		}
+		if time.Since(started) >= time.Minute {
+			backoff = time.Second
 		}
 		timer := time.NewTimer(backoff)
 		select {
@@ -83,6 +91,9 @@ func (c Client) serve(ctx context.Context, handler func([]byte)) error {
 
 	if err := writePacket(conn, 0x82, subscribePayload(1, topics)); err != nil {
 		return fmt.Errorf("send MQTT SUBSCRIBE: %w", err)
+	}
+	if c.OnState != nil {
+		c.OnState(true)
 	}
 
 	awaitingPing := false

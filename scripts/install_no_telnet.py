@@ -31,6 +31,7 @@ OPENMIIO_URL = (
     "v1.2.1/openmiio_agent_mips"
 )
 OPENMIIO_MD5 = "6c3f4dca62647b9d19a81e1ccaa5ccc0"
+OPENMIIO_SHA256 = "78c775b354bb5fb896682fd3c26b9114cf336387985629ca16bc40a19cfb74f6"
 MODEL = "lumi.gateway.mgl03"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +66,18 @@ def md5_bytes(data: bytes) -> str:
 
 def md5_file(path: Path) -> str:
     digest = hashlib.md5()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
@@ -124,15 +137,17 @@ def obtain_openmiio(path: Path | None) -> bytes:
             with urllib.request.urlopen(request, timeout=60) as response:
                 data = response.read()
 
-    actual = md5_bytes(data)
-    if actual != OPENMIIO_MD5:
+    actual_md5 = md5_bytes(data)
+    actual_sha256 = sha256_bytes(data)
+    if actual_md5 != OPENMIIO_MD5 or actual_sha256 != OPENMIIO_SHA256:
         raise ValueError(
-            f"openmiio_agent checksum mismatch: {actual}, expected {OPENMIIO_MD5}"
+            "openmiio_agent checksum mismatch: "
+            f"sha256={actual_sha256}, md5={actual_md5}"
         )
     return data
 
 
-def prepare_stage(stage: Path, openmiio_data: bytes, bridge_path: Path) -> str:
+def prepare_stage(stage: Path, openmiio_data: bytes, bridge_path: Path) -> tuple[str, str]:
     validate_mips_binary(bridge_path)
 
     sources: dict[str, bytes] = {
@@ -148,21 +163,32 @@ def prepare_stage(stage: Path, openmiio_data: bytes, bridge_path: Path) -> str:
     for name, destination, mode in ARTIFACTS:
         data = sources[name]
         (stage / name).write_bytes(data)
-        manifest_lines.append(f"{md5_bytes(data)} {mode} {name} {destination}")
+        manifest_lines.append(
+            f"{sha256_bytes(data)} {md5_bytes(data)} {mode} {name} {destination}"
+        )
 
     manifest = ("\n".join(manifest_lines) + "\n").encode()
     (stage / "manifest.txt").write_bytes(manifest)
 
     installer = read_lf_script(PROJECT_ROOT / "scripts" / "install-on-device.sh")
     (stage / "install-on-device.sh").write_bytes(installer)
-    return md5_bytes(manifest)
+    return sha256_bytes(manifest), md5_bytes(manifest)
 
 
-def build_bootstrap(base_url: str, callback_url: str, manifest_md5: str, installer_md5: str) -> bytes:
+def build_bootstrap(
+    base_url: str,
+    callback_url: str,
+    manifest_sha256: str,
+    manifest_md5: str,
+    installer_sha256: str,
+    installer_md5: str,
+) -> bytes:
     values = {
         "BASE_URL": base_url,
         "CALLBACK_URL": callback_url,
+        "MANIFEST_SHA256": manifest_sha256,
         "MANIFEST_MD5": manifest_md5,
+        "INSTALLER_SHA256": installer_sha256,
         "INSTALLER_MD5": installer_md5,
     }
     assignments = "\n".join(f"{key}={shlex.quote(value)}" for key, value in values.items())
@@ -173,13 +199,24 @@ STATE_DIR=/data/mgl03-homekit
 INSTALLER=$STATE_DIR/install-on-device.sh
 STATUS=90
 
+verify_file() {{
+    FILE=$1
+    EXPECTED_SHA256=$2
+    EXPECTED_MD5=$3
+    ACTUAL_SHA256=$(sha256sum "$FILE" 2>/dev/null | cut -d ' ' -f 1)
+    if [ -n "$ACTUAL_SHA256" ]; then
+        [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ]
+        return $?
+    fi
+    [ "$(md5sum "$FILE" | cut -d ' ' -f 1)" = "$EXPECTED_MD5" ]
+}}
+
 mkdir -p "$STATE_DIR"
 if wget -O "$INSTALLER.new" "$BASE_URL/install-on-device.sh"; then
-    ACTUAL=$(md5sum "$INSTALLER.new" | cut -d ' ' -f 1)
-    if [ "$ACTUAL" = "$INSTALLER_MD5" ]; then
+    if verify_file "$INSTALLER.new" "$INSTALLER_SHA256" "$INSTALLER_MD5"; then
         chmod 700 "$INSTALLER.new"
         mv "$INSTALLER.new" "$INSTALLER"
-        "$INSTALLER" "$BASE_URL" "$MANIFEST_MD5"
+        "$INSTALLER" "$BASE_URL" "$MANIFEST_SHA256" "$MANIFEST_MD5"
         STATUS=$?
     else
         STATUS=91
@@ -192,7 +229,7 @@ exit "$STATUS"
     return script.encode()
 
 
-def build_injection(base_url: str, bootstrap_md5: str) -> str:
+def build_injection(base_url: str, bootstrap_sha256: str, bootstrap_md5: str) -> str:
     state_dir = "/data/mgl03-homekit"
     remote = f"{state_dir}/no-telnet-bootstrap.sh"
     temporary = remote + ".new"
@@ -200,7 +237,9 @@ def build_injection(base_url: str, bootstrap_md5: str) -> str:
     command = (
         f"mkdir -p {state_dir}; "
         f"(wget -O {temporary} {bootstrap_url} && "
-        f'[ "$(md5sum {temporary} | cut -d \' \' -f 1)" = "{bootstrap_md5}" ] && '
+        f'(S=$(sha256sum {temporary} 2>/dev/null | cut -d \' \' -f 1); '
+        f'if [ -n "$S" ]; then [ "$S" = "{bootstrap_sha256}" ]; '
+        f'else [ "$(md5sum {temporary} | cut -d \' \' -f 1)" = "{bootstrap_md5}" ]; fi) && '
         f"chmod 700 {temporary} && mv {temporary} {remote} && {remote}) "
         f">{state_dir}/install.log 2>&1 &"
     )
@@ -299,7 +338,7 @@ def run(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory(prefix="mgl03-homekit-install-") as temp:
         stage = Path(temp)
         try:
-            manifest_md5 = prepare_stage(stage, openmiio_data, bridge_path)
+            manifest_sha256, manifest_md5 = prepare_stage(stage, openmiio_data, bridge_path)
         except Exception as exc:
             print(f"ERROR: prepare installation files: {exc}", file=sys.stderr)
             return 7
@@ -318,11 +357,20 @@ def run(args: argparse.Namespace) -> int:
 
         base_url = f"http://{pc_ip}:{server.server_port}"
         callback_url = f"{base_url}/callback/{nonce}"
+        installer_sha256 = sha256_file(stage / "install-on-device.sh")
         installer_md5 = md5_file(stage / "install-on-device.sh")
-        bootstrap = build_bootstrap(base_url, callback_url, manifest_md5, installer_md5)
+        bootstrap = build_bootstrap(
+            base_url,
+            callback_url,
+            manifest_sha256,
+            manifest_md5,
+            installer_sha256,
+            installer_md5,
+        )
         (stage / "bootstrap.sh").write_bytes(bootstrap)
+        bootstrap_sha256 = sha256_bytes(bootstrap)
         bootstrap_md5 = md5_bytes(bootstrap)
-        injection = build_injection(base_url, bootstrap_md5)
+        injection = build_injection(base_url, bootstrap_sha256, bootstrap_md5)
 
         print(f"Serving a credential-free installation bundle at {base_url}.")
         print("Requesting the gateway to install it; no Telnet session will be opened...")
@@ -363,7 +411,9 @@ def run(args: argparse.Namespace) -> int:
             return 12
 
     print("Gateway reported a successful atomic installation.")
-    for _ in range(30):
+    # New installations may spend 30 seconds collecting all supported sensors
+    # before the HAP listener starts, so leave an additional readiness margin.
+    for _ in range(60):
         if port_is_open(args.gateway_ip, 51826):
             print("HomeKit bridge is listening on TCP 51826.")
             return 0

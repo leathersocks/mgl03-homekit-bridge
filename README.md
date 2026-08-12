@@ -18,8 +18,9 @@ Xiaomi Gateway 3 → openmiio_agent → 로컬 MQTT → 이 브리지 → Apple 
 
 - Xiaomi 제품을 정확히 식별: `pdid=5860`, 모델 `miaomiaoce.sensor_ht.o2`.
 - 온도, 습도, 배터리 잔량 및 배터리 부족 상태.
-- 첫 번째 센서 자동 검색. MAC 주소를 미리 알 필요가 없습니다.
+- 새 설치 시 30초 검색 창에서 지원 센서를 자동 등록. MAC 주소를 미리 알 필요가 없습니다.
 - 재시작 후에도 센서 식별 정보와 HomeKit 페어링 유지.
+- 중복·역순 BLE 프레임 제거와 MQTT/센서 오프라인 상태 표시.
 - MGL03용 네이티브 Linux MIPSLE/soft-float 바이너리.
 - Home Assistant, Python 런타임, Node.js 런타임 또는 외부 MQTT 라이브러리가
   필요하지 않습니다.
@@ -60,14 +61,22 @@ MGL03 바이너리는 `bin/mgl03-homekit-bridge`에 생성됩니다. Linux/macOS
 4. 새로 설치한 경우 Apple 홈에 무작위 페어링 코드를 입력합니다.
 
 설치 프로그램은 펌웨어의 로컬 miIO `set_ip_info` 경로를 사용하여 게이트웨이가
-PC의 임시 HTTP 서버에서 체크섬 검증된 자격 증명 없는 번들을 가져오게 합니다.
+PC의 임시 HTTP 서버에서 SHA-256(구형 BusyBox에서는 MD5 대체)으로 검증된
+자격 증명 없는 번들을 가져오게 합니다.
 Telnet 세션을 열거나 TCP 23번 포트를 활성화하지 않습니다. 업데이트 중에도
 기존 `/data/mgl03-homekit` 구성, 센서 및 HomeKit 페어링을 보존합니다. 지원
 펌웨어 범위, 롤백 동작 및 수동 대체 방법은 설치 안내서를 참고하십시오.
 
-첫 실행 시 안전한 무작위 페어링 PIN을 만들고 일치하는 첫 번째 센서를 자동으로
-검색합니다. 편집 가능한 예제는
+첫 실행 시 안전한 무작위 페어링 PIN을 만들고 30초 동안 일치하는 센서를
+검색합니다. PIN은 새 구성을 만든 최초 실행에만 권한이 제한된 로그에 기록됩니다.
+편집 가능한 예제는
 [configs/config.example.json](configs/config.example.json)에 있습니다.
+
+`discovery.mode`는 `auto`, `first`, `manual` 중 하나입니다. `auto`는 시작 시
+검색 창에서 여러 센서를 등록하고, 실행 중 새 센서를 발견하면 레지스트리에
+저장하여 다음 재시작 때 HomeKit에 노출합니다. 이전 버전에서 생성된 구성은
+호환성을 위해 `first` 방식으로 계속 동작합니다. `sensor_offline_seconds` 동안
+보고가 없거나 MQTT 연결이 끊기면 센서는 HomeKit에서 비활성 상태가 됩니다.
 
 ## 설계 참고 사항
 
@@ -86,8 +95,9 @@ HomeKit 서비스와 mDNS 5353번 포트를 공유할 수 있습니다. 기본 �
 
 ## 보안 및 복구
 
-- MQTT는 게이트웨이/LAN에만 바인딩하고, 라우터에서 1883번 포트를 포워딩하지
-  마십시오.
+- openmiio의 인증 없는 MQTT 1883번 포트는 LAN에서 접근 가능하므로 신뢰할 수
+  있는 IoT VLAN에 두고 라우터에서 포워딩하지 마십시오. 브리지 자체는
+  `127.0.0.1`로만 접속합니다.
 - 펌웨어 또는 브리지를 업그레이드하기 전에 `/data/mgl03-homekit`을
   백업하십시오.
 - 펌웨어 업데이트로 사용자 지정 시작 훅이 제거되거나 로컬 miIO 설치 경로가

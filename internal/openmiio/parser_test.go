@@ -44,3 +44,10 @@ func TestParseMIoTProperties(t *testing.T) {
 		t.Fatalf("updates = %#v", updates)
 	}
 }
+
+func TestRejectOutOfRangeMIoTProperty(t *testing.T) {
+	payload := []byte(`{"method":"properties_changed","params":[{"did":"blt.3.test","siid":3,"piid":1002,"value":101}]}`)
+	if _, err := Parse(payload); err == nil {
+		t.Fatal("expected out-of-range humidity error")
+	}
+}

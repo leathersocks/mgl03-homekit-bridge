@@ -42,8 +42,9 @@ py .\scripts\install_no_telnet.py --gateway-ip 192.168.10.41
    Key, HomeKit PIN 또는 페어링 상태는 절대 포함하지 않습니다.
 4. 게이트웨이가 번들을 가져오도록 지시하는 짧은 `set_ip_info` 요청을
    보냅니다.
-5. 게이트웨이에서 모든 파일의 MD5를 확인하고, 알 수 없는 시작 훅은 거부하며,
-   런타임 파일을 원자적으로 교체한 뒤 브리지 실행에 실패하면 롤백합니다.
+5. 게이트웨이에서 모든 파일의 SHA-256을 확인하고, 알 수 없는 시작 훅은
+   거부하며, 런타임 파일을 원자적으로 교체한 뒤 브리지 실행에 실패하면
+   롤백합니다. `sha256sum`이 없는 구형 BusyBox에서만 MD5로 대체합니다.
 6. 일회성 HTTP 콜백으로 결과를 수신하고 브리지가 준비되면 TCP `51826`을
    확인합니다.
 
@@ -58,7 +59,8 @@ py .\scripts\install_no_telnet.py `
 ```
 
 설치 중 PC에서 GitHub에 접속할 수 없다면 미리 다운로드한 공식 MIPS 바이너리를
-지정하십시오. 예상 MD5는 `6c3f4dca62647b9d19a81e1ccaa5ccc0`입니다.
+지정하십시오. 예상 SHA-256은
+`78c775b354bb5fb896682fd3c26b9114cf336387985629ca16bc40a19cfb74f6`입니다.
 
 ```powershell
 py .\scripts\install_no_telnet.py `
@@ -107,27 +109,29 @@ tail -f /data/mgl03-homekit/bridge.log
 컬렉션 설정으로 브리지를 실행합니다. 스크립트를 호출하기 전에 `GOMAXPROCS`,
 `GOMEMLIMIT` 또는 `GOGC`를 설정하여 기본값을 변경할 수 있습니다.
 
-기본 BusyBox 이미지에는 `pidof`가 없으므로 스크립트는 `ps`를 통해 실행 중인
-`openmiio_agent`를 찾습니다. 두 데몬 중 하나라도 시작 중 종료되면 잠시 기다린
-뒤 실패를 반환합니다. 따라서 `started` 메시지가 표시되면 브리지 프로세스가
-여전히 실행 중이라는 뜻입니다.
+스크립트는 `pidof`와 `/proc/<pid>/cmdline`을 함께 확인하여 PID가 재사용되거나
+필수 `miio central mqtt cache` 인수 없이 실행된 `openmiio_agent`를 정상
+프로세스로 오인하지 않습니다. 두 데몬 중 하나라도 시작 중 종료되면 실패를
+반환합니다.
 
 첫 시작 시 무작위 페어링 PIN이 포함된 `/data/mgl03-homekit/config.json`을
-만든 다음 첫 번째 `miaomiaoce.sensor_ht.o2` 광고를 기다립니다. 로그에는 검색
-결과와 `XXX-XX-XXX` 형식의 페어링 코드가 함께 표시됩니다. Apple 홈에서
+만든 다음 30초 검색 창에서 `miaomiaoce.sensor_ht.o2` 광고를 수집합니다.
+페어링 코드는 구성을 만든 최초 실행에만 권한이 제한된 로그에 표시됩니다. Apple 홈에서
 **액세서리 추가 → 추가 옵션**을 선택하고 **MGL03 Bluetooth Bridge**를 고른
 다음 해당 코드를 입력하십시오.
 
-검색된 MAC과 DID는 `/data/mgl03-homekit/devices.json`에 저장됩니다. 페어링
+검색된 MAC, DID, 제품 ID와 안정적인 HomeKit AID는
+`/data/mgl03-homekit/devices.json`에 저장됩니다. 페어링
 키는 `/data/mgl03-homekit/hap`에 보관되므로 재부팅과 업그레이드 시 두 위치를
 모두 보존하십시오.
 
 ## 여러 센서 사용
 
-자동 검색은 일치하는 첫 번째 센서만 등록합니다. 센서를 추가하려면 브리지를
-중지하고 `configs/config.example.json`을 참고하여 해당 MAC/DID 항목을
-`config.json`에 추가하십시오. 첫 번째 센서를 의도적으로 다시 검색하려는
-경우에만 `devices.json`을 삭제하십시오.
+새 구성의 `discovery.mode` 기본값은 `auto`입니다. 시작 시 검색 창에서 여러
+센서를 등록하며, 실행 중 새 센서를 발견하면 `devices.json`에 저장합니다. 실행
+중 추가된 센서는 브리지를 한 번 재시작하면 HomeKit에 나타납니다. 기존 구성은
+호환성을 위해 `first` 방식으로 유지됩니다. 자동 등록을 원하지 않으면
+`discovery.mode`를 `manual`로 설정하십시오.
 
 ## 자동 시작
 

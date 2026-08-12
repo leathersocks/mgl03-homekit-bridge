@@ -43,8 +43,9 @@ session:
    the token, Gateway Key, HomeKit PIN, or pairing state.
 4. Sends a short `set_ip_info` request that tells the gateway to pull the
    bundle.
-5. Verifies every file with MD5 on the gateway, rejects unknown startup hooks,
-   atomically replaces runtime files, and rolls back if the bridge fails.
+5. Verifies every file with SHA-256 on the gateway, rejects unknown startup
+   hooks, atomically replaces runtime files, and rolls back if the bridge
+   fails. MD5 is used only on old BusyBox builds without `sha256sum`.
 6. Receives a one-time HTTP callback with the result and verifies TCP `51826`
    when the bridge is ready.
 
@@ -59,8 +60,8 @@ py .\scripts\install_no_telnet.py `
 ```
 
 If the PC cannot access GitHub during installation, supply a previously
-downloaded official MIPS binary. Its expected MD5 is
-`6c3f4dca62647b9d19a81e1ccaa5ccc0`:
+downloaded official MIPS binary. Its expected SHA-256 is
+`78c775b354bb5fb896682fd3c26b9114cf336387985629ca16bc40a19cfb74f6`:
 
 ```powershell
 py .\scripts\install_no_telnet.py `
@@ -110,27 +111,30 @@ start script therefore runs the bridge with one OS thread, a 16 MiB Go memory
 limit, and more frequent garbage collection. These defaults can be overridden
 by setting `GOMAXPROCS`, `GOMEMLIMIT`, or `GOGC` before invoking the script.
 
-The script detects an existing `openmiio_agent` through `ps` because the stock
-BusyBox image does not provide `pidof`. It also waits briefly and returns a
-failure if either daemon exits during startup, so a printed `started` message
-means the bridge process is still alive.
+The script combines `pidof` with `/proc/<pid>/cmdline` validation so PID reuse or
+an `openmiio_agent` missing the required `miio central mqtt cache` arguments is
+not mistaken for a healthy process. It returns a failure if either daemon exits
+during startup.
 
 The first start creates `/data/mgl03-homekit/config.json` with a random pairing
-PIN, then waits for the first `miaomiaoce.sensor_ht.o2` advertisement. The log
-shows both the discovery and a pairing code in `XXX-XX-XXX` form. In Apple Home,
+PIN, then collects `miaomiaoce.sensor_ht.o2` advertisements for 30 seconds. The
+pairing code is logged only when the configuration is created, in a
+permission-restricted log. In Apple Home,
 choose **Add Accessory → More Options**, select **MGL03 Bluetooth Bridge**, and
 enter that code.
 
-The discovered MAC and DID are saved in `/data/mgl03-homekit/devices.json`.
+The discovered MAC, DID, product ID, and stable HomeKit AID are saved in
+`/data/mgl03-homekit/devices.json`.
 Pairing keys are kept in `/data/mgl03-homekit/hap`; preserve both locations
 across reboots and upgrades.
 
 ## More than one sensor
 
-Automatic discovery registers only the first matching sensor. For additional
-sensors, stop the bridge and add their MAC/DID entries to `config.json` using
-`configs/config.example.json` as a guide. Remove `devices.json` only if you
-intentionally want to rediscover the first sensor.
+New configurations default to `discovery.mode=auto`. Multiple sensors are
+enrolled during the startup window; supported sensors first observed while the
+bridge is running are saved to `devices.json` and appear in HomeKit after one
+bridge restart. Existing configurations retain the legacy `first` behavior.
+Set `discovery.mode` to `manual` to disable automatic enrollment.
 
 ## Autostart
 

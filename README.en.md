@@ -18,8 +18,9 @@ Xiaomi Gateway 3 → openmiio_agent → local MQTT → this bridge → Apple Hom
 
 - Exact Xiaomi product match: `pdid=5860`, model `miaomiaoce.sensor_ht.o2`.
 - Temperature, humidity, battery level, and low-battery status.
-- Automatic first-sensor discovery; no MAC address is needed in advance.
+- Automatic enrollment of supported sensors during a 30-second window on a new installation.
 - Persistent sensor identity and HomeKit pairing across restarts.
+- Duplicate/out-of-order BLE filtering and MQTT/sensor offline status.
 - Native Linux MIPSLE/soft-float binary for MGL03.
 - No Home Assistant, Python runtime, Node.js runtime, or external MQTT library.
 
@@ -58,15 +59,24 @@ See [docs/INSTALL.en.md](docs/INSTALL.en.md). At a high level:
 4. Enter the random pairing code in Apple Home on a fresh installation.
 
 The installer uses the firmware's local miIO `set_ip_info` path to make the
-gateway pull a checksum-verified, credential-free bundle from a temporary HTTP
-server on the PC. It never opens a Telnet session or enables TCP port 23.
+gateway pull a credential-free bundle from a temporary HTTP server on the PC.
+Artifacts are verified with SHA-256, with MD5 retained only as a compatibility
+fallback for BusyBox builds without `sha256sum`. It never opens a Telnet session
+or enables TCP port 23.
 Existing `/data/mgl03-homekit` configuration, sensors, and HomeKit pairing are
 preserved during updates. See the installation guide for firmware limitations,
 rollback behavior, and the manual fallback.
 
-The first run creates a secure random pairing PIN and discovers the first
-matching sensor automatically. An editable example is available at
+The first run creates a secure random pairing PIN and discovers matching sensors
+for 30 seconds. The PIN is logged only when a new configuration is created, in a
+permission-restricted log. An editable example is available at
 [configs/config.example.json](configs/config.example.json).
+
+`discovery.mode` accepts `auto`, `first`, or `manual`. `auto` enrolls multiple
+sensors during the startup window and records newly observed supported sensors
+for exposure after the next bridge restart. Configurations created by older
+versions retain the legacy `first` behavior. A sensor is marked inactive in
+HomeKit when MQTT disconnects or no report arrives for `sensor_offline_seconds`.
 
 ## Design notes
 
@@ -86,7 +96,9 @@ service; the stock service does not need to be stopped.
 
 ## Security and recovery
 
-- Keep MQTT bound to the gateway/LAN; never forward port 1883 from the router.
+- openmiio's unauthenticated MQTT port 1883 is reachable from the LAN. Keep the
+  gateway on a trusted IoT VLAN and never forward that port; the bridge itself
+  connects only through `127.0.0.1`.
 - Back up `/data/mgl03-homekit` before firmware or bridge upgrades.
 - Firmware updates may remove the custom startup hook or disable the local miIO
   installation path.

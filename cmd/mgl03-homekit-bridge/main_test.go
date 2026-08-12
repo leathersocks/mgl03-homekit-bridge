@@ -17,3 +17,20 @@ func TestMergeDevicesMatchesMACOrDID(t *testing.T) {
 		t.Fatalf("merged = %#v", merged)
 	}
 }
+
+func TestPrepareDevicesPreservesLegacyAIDAndAvoidsCollision(t *testing.T) {
+	devices := []config.Device{
+		{Name: "one", MAC: "aa:bb:cc:dd:ee:ff"},
+		{Name: "two", MAC: "aa:bb:cc:dd:ee:ff", DID: "different"},
+	}
+	prepared, changed := prepareDevices(devices)
+	if !changed {
+		t.Fatal("legacy devices were not migrated")
+	}
+	if prepared[0].AID < 2 || prepared[1].AID < 2 || prepared[0].AID == prepared[1].AID {
+		t.Fatalf("aids = %d, %d", prepared[0].AID, prepared[1].AID)
+	}
+	if prepared[0].ProductID == 0 || prepared[0].Model == "" {
+		t.Fatalf("device defaults missing: %#v", prepared[0])
+	}
+}

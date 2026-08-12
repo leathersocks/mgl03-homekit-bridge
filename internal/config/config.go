@@ -13,9 +13,15 @@ import (
 )
 
 const (
-	DefaultBroker = "127.0.0.1:1883"
-	DefaultTopic  = "central/report"
-	DefaultPort   = 51826
+	DefaultBroker                 = "127.0.0.1:1883"
+	DefaultTopic                  = "central/report"
+	DefaultPort                   = 51826
+	DefaultSensorOfflineSeconds   = 15 * 60
+	DefaultDiscoveryWindowSeconds = 30
+
+	DiscoveryModeFirst  = "first"
+	DiscoveryModeAuto   = "auto"
+	DiscoveryModeManual = "manual"
 )
 
 type MQTT struct {
@@ -25,19 +31,29 @@ type MQTT struct {
 }
 
 type Device struct {
-	Name string `json:"name"`
-	MAC  string `json:"mac,omitempty"`
-	DID  string `json:"did,omitempty"`
+	Name      string `json:"name"`
+	MAC       string `json:"mac,omitempty"`
+	DID       string `json:"did,omitempty"`
+	ProductID int    `json:"product_id,omitempty"`
+	Model     string `json:"model,omitempty"`
+	AID       uint64 `json:"aid,omitempty"`
+}
+
+type Discovery struct {
+	Mode          string `json:"mode,omitempty"`
+	WindowSeconds int    `json:"window_seconds,omitempty"`
 }
 
 type Config struct {
-	BridgeName string   `json:"bridge_name"`
-	Pin        string   `json:"pin"`
-	Port       int      `json:"port"`
-	Interfaces []string `json:"interfaces,omitempty"`
-	StateDir   string   `json:"state_dir"`
-	MQTT       MQTT     `json:"mqtt"`
-	Devices    []Device `json:"devices,omitempty"`
+	BridgeName           string    `json:"bridge_name"`
+	Pin                  string    `json:"pin"`
+	Port                 int       `json:"port"`
+	Interfaces           []string  `json:"interfaces,omitempty"`
+	StateDir             string    `json:"state_dir"`
+	SensorOfflineSeconds int       `json:"sensor_offline_seconds,omitempty"`
+	Discovery            Discovery `json:"discovery,omitempty"`
+	MQTT                 MQTT      `json:"mqtt"`
+	Devices              []Device  `json:"devices,omitempty"`
 }
 
 func Defaults(configPath string) (Config, error) {
@@ -50,10 +66,15 @@ func Defaults(configPath string) (Config, error) {
 		stateDir = "state"
 	}
 	return Config{
-		BridgeName: "MGL03 Bluetooth Bridge",
-		Pin:        pin,
-		Port:       DefaultPort,
-		StateDir:   stateDir,
+		BridgeName:           "MGL03 Bluetooth Bridge",
+		Pin:                  pin,
+		Port:                 DefaultPort,
+		StateDir:             stateDir,
+		SensorOfflineSeconds: DefaultSensorOfflineSeconds,
+		Discovery: Discovery{
+			Mode:          DiscoveryModeAuto,
+			WindowSeconds: DefaultDiscoveryWindowSeconds,
+		},
 		MQTT: MQTT{
 			Address:  DefaultBroker,
 			Topic:    DefaultTopic,
@@ -108,6 +129,29 @@ func (c *Config) NormalizeAndValidate(configPath string) error {
 			c.StateDir = "state"
 		}
 	}
+	if c.SensorOfflineSeconds == 0 {
+		c.SensorOfflineSeconds = DefaultSensorOfflineSeconds
+	}
+	if c.SensorOfflineSeconds < 60 || c.SensorOfflineSeconds > 24*60*60 {
+		return fmt.Errorf("sensor_offline_seconds must be between 60 and 86400")
+	}
+	c.Discovery.Mode = strings.ToLower(strings.TrimSpace(c.Discovery.Mode))
+	if c.Discovery.Mode == "" {
+		// Preserve the legacy single-sensor discovery behavior for existing
+		// configuration files that predate the discovery section.
+		c.Discovery.Mode = DiscoveryModeFirst
+	}
+	switch c.Discovery.Mode {
+	case DiscoveryModeFirst, DiscoveryModeAuto, DiscoveryModeManual:
+	default:
+		return fmt.Errorf("discovery.mode must be %q, %q, or %q", DiscoveryModeFirst, DiscoveryModeAuto, DiscoveryModeManual)
+	}
+	if c.Discovery.WindowSeconds == 0 {
+		c.Discovery.WindowSeconds = DefaultDiscoveryWindowSeconds
+	}
+	if c.Discovery.WindowSeconds < 5 || c.Discovery.WindowSeconds > 10*60 {
+		return fmt.Errorf("discovery.window_seconds must be between 5 and 600")
+	}
 	if strings.TrimSpace(c.MQTT.Address) == "" {
 		c.MQTT.Address = DefaultBroker
 	}
@@ -124,6 +168,7 @@ func (c *Config) NormalizeAndValidate(configPath string) error {
 	}
 
 	seen := make(map[string]struct{}, len(c.Devices))
+	seenAID := make(map[uint64]struct{}, len(c.Devices))
 	for i := range c.Devices {
 		d := &c.Devices[i]
 		d.Name = strings.TrimSpace(d.Name)
@@ -149,6 +194,15 @@ func (c *Config) NormalizeAndValidate(configPath string) error {
 			return fmt.Errorf("duplicate device %q", key)
 		}
 		seen[key] = struct{}{}
+		if d.AID == 1 {
+			return fmt.Errorf("devices[%d] uses reserved bridge aid 1", i)
+		}
+		if d.AID > 0 {
+			if _, ok := seenAID[d.AID]; ok {
+				return fmt.Errorf("duplicate device aid %d", d.AID)
+			}
+			seenAID[d.AID] = struct{}{}
+		}
 	}
 	return nil
 }

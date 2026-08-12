@@ -2,7 +2,9 @@
 
 [한국어](PROTOCOL.md)
 
-This bridge intentionally supports one Xiaomi BLE product family:
+The current release supports one Xiaomi BLE product family. Product metadata is
+kept in an internal registry so additional device decoders can be added without
+spreading PDID checks through the runtime:
 
 | Field | Value |
 |---|---|
@@ -49,6 +51,12 @@ A typical BLE report has this shape:
 Only BLE events with `pdid=5860` are accepted. MIoT property reports do not
 contain a product ID, so they are applied only when their `did` matches an
 already configured or discovered sensor.
+
+The bridge tracks `frmCnt` per MAC/DID. Duplicate frames published on both MQTT
+topics and clearly older frames are ignored; the counter baseline resets after
+ten minutes of silence to permit sensor reboot or battery replacement. MQTT
+disconnects and reports older than `sensor_offline_seconds` are reflected in
+HomeKit's active/fault characteristics.
 
 ## References
 

@@ -44,14 +44,16 @@ class NoTelnetInstallerTests(unittest.TestCase):
         bootstrap = MODULE.build_bootstrap(
             "http://192.168.10.100:8123",
             "http://192.168.10.100:8123/callback/abc",
+            "a" * 64,
             "a" * 32,
+            "b" * 64,
             "b" * 32,
         )
         self.assertIn(b"install-on-device.sh", bootstrap)
         self.assertNotIn(b"token", bootstrap.lower())
 
         command = MODULE.build_injection(
-            "http://192.168.10.100:8123", "c" * 32
+            "http://192.168.10.100:8123", "c" * 64, "d" * 32
         )
         self.assertIn("install.log", command)
         self.assertTrue(command.endswith("&"))
@@ -83,6 +85,10 @@ class NoTelnetInstallerTests(unittest.TestCase):
 
             manifest = (stage / "manifest.txt").read_text(encoding="utf-8")
             self.assertEqual(len(manifest.strip().splitlines()), len(MODULE.ARTIFACTS))
+            for line in manifest.strip().splitlines():
+                fields = line.split()
+                self.assertEqual(len(fields[0]), 64)
+                self.assertEqual(len(fields[1]), 32)
             self.assertNotIn("token", manifest.lower())
             self.assertNotIn("key", manifest.lower())
             self.assertNotIn("config.json", manifest)
