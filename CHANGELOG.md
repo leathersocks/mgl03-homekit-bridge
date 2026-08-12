@@ -58,6 +58,8 @@
 - 필수 `miio central mqtt cache` 인수 없이 실행된 `openmiio_agent`를 정상
   프로세스로 오인할 수 있던 시작 스크립트 문제.
 - 종료 스크립트가 브리지의 정상 종료를 기다리지 않고 PID 파일을 제거하던 문제.
+- Linux amd64에서 `syscall.SO_REUSEPORT`가 정의되지 않아 GitHub Actions 빌드가
+  실패하던 문제. 아키텍처별 값을 제공하는 `x/sys/unix`를 사용하도록 변경.
 
 ## 초기 개발 - 2026-08-10 ~ 2026-08-11
 

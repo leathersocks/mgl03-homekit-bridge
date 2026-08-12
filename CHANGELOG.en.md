@@ -68,6 +68,9 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
   `miio central mqtt cache` arguments for a healthy instance.
 - The stop script removing the PID file without waiting for a graceful bridge
   shutdown.
+- GitHub Actions failing to compile on Linux amd64 because
+  `syscall.SO_REUSEPORT` is not defined there; socket options now use the
+  architecture-specific constants from `x/sys/unix`.
 
 ## Initial development - 2026-08-10 to 2026-08-11
 

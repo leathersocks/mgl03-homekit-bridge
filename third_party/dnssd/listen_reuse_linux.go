@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // listenMDNSUDP enables address reuse before bind so this responder can
@@ -16,11 +18,11 @@ func listenMDNSUDP(network string, address *net.UDPAddr) (*net.UDPConn, error) {
 		Control: func(_, _ string, raw syscall.RawConn) error {
 			var socketErr error
 			if err := raw.Control(func(fd uintptr) {
-				socketErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+				socketErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
 				if socketErr == nil {
 					// SO_REUSEPORT is optional on older kernels. SO_REUSEADDR is the
 					// required option for sharing an mDNS multicast listener.
-					_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
+					_ = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
 				}
 			}); err != nil {
 				return err
