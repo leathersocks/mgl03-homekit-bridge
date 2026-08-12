@@ -17,6 +17,7 @@ import (
 	"github.com/brutella/hap/accessory"
 	"github.com/leathersocks/mgl03-homekit-bridge/internal/bridge"
 	"github.com/leathersocks/mgl03-homekit-bridge/internal/config"
+	"github.com/leathersocks/mgl03-homekit-bridge/internal/measurements"
 	"github.com/leathersocks/mgl03-homekit-bridge/internal/mqttmini"
 	"github.com/leathersocks/mgl03-homekit-bridge/internal/openmiio"
 	"github.com/leathersocks/mgl03-homekit-bridge/internal/registry"
@@ -101,6 +102,12 @@ func run(configPath string) error {
 			return fmt.Errorf("save device registry: %w", err)
 		}
 	}
+	measurementPath := filepath.Join(cfg.StateDir, "measurements.json")
+	measurementState, err := measurements.Load(measurementPath)
+	if err != nil {
+		log.Printf("measurement cache: %v; starting without cached values", err)
+		measurementState = measurements.New()
+	}
 
 	sort.Slice(devices, func(i, j int) bool { return deviceKey(devices[i]) < deviceKey(devices[j]) })
 	bridgeAccessory := accessory.NewBridge(accessory.Info{
@@ -112,15 +119,38 @@ func run(configPath string) error {
 	})
 	bridgeAccessory.A.Id = 1
 
-	sensors := make([]*bridge.Sensor, 0, len(devices))
+	deviceAccessories := make([]bridge.DeviceAccessory, 0, len(devices))
 	accessories := make([]*accessory.A, 0, len(devices))
 	for _, device := range devices {
-		sensor := bridge.NewSensor(device)
-		sensors = append(sensors, sensor)
-		accessories = append(accessories, sensor.Accessory)
+		deviceAccessory, err := bridge.NewDeviceAccessory(device)
+		if err != nil {
+			log.Printf("ignoring unsupported configured BLE device %s: %v", deviceKey(device), err)
+			continue
+		}
+		deviceAccessories = append(deviceAccessories, deviceAccessory)
+		accessories = append(accessories, deviceAccessory.HAPAccessory())
+	}
+	defer func() {
+		for _, deviceAccessory := range deviceAccessories {
+			deviceAccessory.Close()
+		}
+	}()
+	if restored := restoreCachedMeasurements(deviceAccessories, measurementState); restored > 0 {
+		log.Printf("restored cached measurements for %d BLE device(s)", restored)
 	}
 
-	go processUpdates(ctx, updates, sensors, deduplicator, initialUpdates, cfg, registryPath, devices)
+	go processUpdates(
+		ctx,
+		updates,
+		deviceAccessories,
+		deduplicator,
+		initialUpdates,
+		cfg,
+		registryPath,
+		devices,
+		measurementState,
+		measurementPath,
+	)
 
 	hapDir := filepath.Join(cfg.StateDir, "hap")
 	if err := os.MkdirAll(hapDir, 0o700); err != nil {
@@ -133,7 +163,7 @@ func run(configPath string) error {
 	server.Pin = cfg.Pin
 	server.Addr = fmt.Sprintf(":%d", cfg.Port)
 	server.Ifaces = cfg.Interfaces
-	log.Printf("HomeKit bridge %q is ready on port %d with %d sensor(s)", cfg.BridgeName, cfg.Port, len(sensors))
+	log.Printf("HomeKit bridge %q is ready on port %d with %d BLE device(s)", cfg.BridgeName, cfg.Port, len(deviceAccessories))
 	if err := server.ListenAndServe(ctx); err != nil && ctx.Err() == nil {
 		return fmt.Errorf("serve HomeKit: %w", err)
 	}
@@ -143,17 +173,20 @@ func run(configPath string) error {
 func processUpdates(
 	ctx context.Context,
 	updates <-chan openmiio.Update,
-	sensors []*bridge.Sensor,
+	deviceAccessories []bridge.DeviceAccessory,
 	deduplicator *openmiio.Deduplicator,
 	initial map[string]openmiio.Update,
 	cfg config.Config,
 	registryPath string,
 	devices []config.Device,
+	measurementState *measurements.State,
+	measurementPath string,
 ) {
 	unknown := make(map[string]bool)
 	for key, update := range initial {
-		if sensor := matchSensor(sensors, update); sensor != nil {
-			sensor.Apply(update)
+		if deviceAccessory := matchAccessory(deviceAccessories, update); deviceAccessory != nil {
+			deviceAccessory.Apply(update)
+			persistMeasurements(measurementState, measurementPath, update)
 		}
 		delete(initial, key)
 	}
@@ -162,11 +195,17 @@ func processUpdates(
 		case <-ctx.Done():
 			return
 		case update := <-updates:
-			if !deduplicator.Accept(update) {
+			deviceAccessory := matchAccessory(deviceAccessories, update)
+			disposition := deduplicator.Classify(update)
+			if disposition != openmiio.FrameAccepted {
+				if disposition == openmiio.FrameDuplicate && deviceAccessory != nil &&
+					update.Toothbrush != nil && update.Toothbrush.Type == 0 {
+					deviceAccessory.Apply(update)
+				}
 				continue
 			}
-			sensor := matchSensor(sensors, update)
-			if sensor == nil {
+			persistMeasurements(measurementState, measurementPath, update)
+			if deviceAccessory == nil {
 				key := update.MAC
 				if key == "" {
 					key = update.DID
@@ -182,13 +221,35 @@ func processUpdates(
 							log.Printf("auto-enrolled %s; restart the bridge to expose it to HomeKit", key)
 						}
 					} else {
-						log.Printf("ignoring additional unconfigured %s: %s", openmiio.ModelSensorHTO2, key)
+						log.Printf("ignoring additional unconfigured %s: %s", update.Model, key)
 					}
 				}
 				continue
 			}
-			sensor.Apply(update)
+			deviceAccessory.Apply(update)
 		}
+	}
+}
+
+func restoreCachedMeasurements(deviceAccessories []bridge.DeviceAccessory, state *measurements.State) int {
+	restored := 0
+	for _, deviceAccessory := range deviceAccessories {
+		update, _, ok := state.Restore(deviceAccessory.DeviceConfig())
+		if !ok {
+			continue
+		}
+		deviceAccessory.Apply(update)
+		restored++
+	}
+	return restored
+}
+
+func persistMeasurements(state *measurements.State, path string, update openmiio.Update) {
+	if state == nil || path == "" || !state.Merge(update, time.Now()) {
+		return
+	}
+	if err := state.Save(path); err != nil {
+		log.Printf("save measurement cache: %v", err)
 	}
 }
 
@@ -204,7 +265,7 @@ func discoverDevices(
 		return devices, initial, false, nil
 	}
 
-	log.Printf("waiting to discover %s (PDID %d)", openmiio.ModelSensorHTO2, openmiio.ProductIDSensorHTO2)
+	log.Printf("waiting to discover supported Xiaomi BLE devices")
 	var timer *time.Timer
 	var timerC <-chan time.Time
 	discovered := false
@@ -231,14 +292,14 @@ func discoverDevices(
 			device := deviceFromUpdate(update, len(devices)+1)
 			devices = appendDeviceWithAID(devices, device)
 			discovered = true
-			log.Printf("discovered %s at %s", openmiio.ModelSensorHTO2, update.MAC)
+			log.Printf("discovered %s (PDID %d) at %s", update.Model, update.ProductID, update.MAC)
 			if cfg.Discovery.Mode == config.DiscoveryModeFirst {
 				return devices, initial, true, nil
 			}
 			if timer == nil {
 				timer = time.NewTimer(time.Duration(cfg.Discovery.WindowSeconds) * time.Second)
 				timerC = timer.C
-				log.Printf("collecting additional supported sensors for %d seconds", cfg.Discovery.WindowSeconds)
+				log.Printf("collecting additional supported BLE devices for %d seconds", cfg.Discovery.WindowSeconds)
 			}
 		}
 	}
@@ -269,12 +330,19 @@ func prepareDevices(devices []config.Device) ([]config.Device, bool) {
 	used := make(map[uint64]bool, len(prepared))
 	for i := range prepared {
 		if prepared[i].ProductID == 0 {
-			prepared[i].ProductID = openmiio.ProductIDSensorHTO2
-			changed = true
+			if product, ok := openmiio.LookupProductByModel(prepared[i].Model); ok {
+				prepared[i].ProductID = product.ID
+				changed = true
+			} else if prepared[i].Model == "" {
+				prepared[i].ProductID = openmiio.ProductIDSensorHTO2
+				changed = true
+			}
 		}
 		if prepared[i].Model == "" {
-			prepared[i].Model = openmiio.ModelSensorHTO2
-			changed = true
+			if product, ok := openmiio.LookupProduct(prepared[i].ProductID); ok {
+				prepared[i].Model = product.Model
+				changed = true
+			}
 		}
 		if prepared[i].AID >= 2 && !used[prepared[i].AID] {
 			used[prepared[i].AID] = true
@@ -319,13 +387,14 @@ func updateIdentity(update openmiio.Update) string {
 	return "did:" + update.DID
 }
 
-func matchSensor(sensors []*bridge.Sensor, update openmiio.Update) *bridge.Sensor {
-	for _, sensor := range sensors {
-		if update.MAC != "" && sensor.Device.MAC != "" && strings.EqualFold(update.MAC, sensor.Device.MAC) {
-			return sensor
+func matchAccessory(deviceAccessories []bridge.DeviceAccessory, update openmiio.Update) bridge.DeviceAccessory {
+	for _, deviceAccessory := range deviceAccessories {
+		device := deviceAccessory.DeviceConfig()
+		if update.MAC != "" && device.MAC != "" && strings.EqualFold(update.MAC, device.MAC) {
+			return deviceAccessory
 		}
-		if update.DID != "" && sensor.Device.DID != "" && update.DID == sensor.Device.DID {
-			return sensor
+		if update.DID != "" && device.DID != "" && update.DID == device.DID {
+			return deviceAccessory
 		}
 	}
 	return nil

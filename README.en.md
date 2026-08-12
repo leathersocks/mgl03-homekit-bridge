@@ -3,24 +3,30 @@
 [한국어](README.md) · [Changelog](CHANGELOG.en.md)
 
 A small, Home Assistant-free bridge that runs directly on Xiaomi Gateway 3
-(`lumi.gateway.mgl03`). It converts BLE reports from the currently supported
-`miaomiaoce.sensor_ht.o2` / LYWSD02MMC sensor into native HomeKit temperature,
-humidity, and battery services.
+(`lumi.gateway.mgl03`). It converts supported Xiaomi BLE reports into native
+HomeKit services. The current product registry includes the
+`miaomiaoce.sensor_ht.o2` climate sensor and `k0918.toothbrush.t700i` toothbrush.
 
 ```text
-miaomiaoce.sensor_ht.o2
-          │ BLE
+supported Xiaomi BLE device
+          │ MiBeacon / MIoT
           ▼
-Xiaomi Gateway 3 → openmiio_agent → local MQTT → this bridge → Apple Home
+Xiaomi Gateway 3 → openmiio_agent → local MQTT → product decoder → HomeKit accessory → Apple Home
 ```
 
 ## What works
 
-- Exact Xiaomi product match: `pdid=5860`, model `miaomiaoce.sensor_ht.o2`.
-- Temperature, humidity, battery level, and low-battery status.
-- Automatic enrollment of supported sensors during a 30-second window on a new installation.
-- Persistent sensor identity and HomeKit pairing across restarts.
-- Duplicate/out-of-order BLE filtering and MQTT/sensor offline status.
+- `miaomiaoce.sensor_ht.o2` (`pdid=5860`): temperature, humidity, battery level,
+  and low-battery status.
+- `k0918.toothbrush.t700i` (`pdid=6032`): brushing activity as a HomeKit motion
+  sensor, battery level, forced-stop timestamp correction, and a 30-second
+  lost-end watchdog.
+- Automatic enrollment of supported devices during a 30-second window on a new installation.
+- Persistent device identity, HomeKit pairing, and last known temperature,
+  humidity, and battery readings across restarts. Cached values replace the
+  `0°C` characteristic default until a fresh BLE report arrives.
+- Duplicate/out-of-order BLE filtering and safe handling of duplicate T700i
+  start advertisements.
 - Native Linux MIPSLE/soft-float binary for MGL03.
 - No Home Assistant, Python runtime, Node.js runtime, or external MQTT library.
 
@@ -55,7 +61,8 @@ See [docs/INSTALL.en.md](docs/INSTALL.en.md). At a high level:
    py .\scripts\install_no_telnet.py --gateway-ip 192.168.10.41
    ```
 
-3. Wait for the sensor's next BLE advertisement.
+3. Wait for the device's next BLE advertisement. A T700i sends its activity
+   event when brushing starts.
 4. Enter the random pairing code in Apple Home on a fresh installation.
 
 The installer uses the firmware's local miIO `set_ip_info` path to make the
@@ -90,13 +97,13 @@ subscribes only to `miio/report` and `central/report` by default:
 py .\scripts\mqtt_ble_probe.py --host 192.168.10.41
 ```
 
-The first run creates a secure random pairing PIN and discovers matching sensors
+The first run creates a secure random pairing PIN and discovers matching devices
 for 30 seconds. The PIN is logged only when a new configuration is created, in a
 permission-restricted log. An editable example is available at
 [configs/config.example.json](configs/config.example.json).
 
 `discovery.mode` accepts `auto`, `first`, or `manual`. `auto` enrolls multiple
-sensors during the startup window and records newly observed supported sensors
+devices during the startup window and records newly observed supported devices
 for exposure after the next bridge restart. Configurations created by older
 versions retain the legacy `first` behavior. During a temporary MQTT disconnect,
 HomeKit retains the last accepted sensor values while the bridge reconnects in
@@ -106,14 +113,16 @@ the background.
 
 `openmiio_agent` publishes the MGL03 Bluetooth service's JSON to
 `central/report` or `miio/report`, depending on the stock firmware path. The
-bridge subscribes to both topics, accepts only PDID 5860 BLE events, and decodes
-the verified XiaomiGateway3 mappings. MIoT property updates are also accepted
-after the device DID is known. Details and sample payloads are in
-[docs/PROTOCOL.en.md](docs/PROTOCOL.en.md).
+bridge subscribes to both topics, resolves each PDID through a product registry,
+and dispatches it to a product-specific decoder and HomeKit accessory factory.
+MIoT property updates are also accepted after the device DID is known. Details
+and sample payloads are in [docs/PROTOCOL.en.md](docs/PROTOCOL.en.md). The steps
+for adding another product family are in
+[docs/ADDING-DEVICES.en.md](docs/ADDING-DEVICES.en.md).
 
 HomeKit is implemented with the lightweight
 [`github.com/brutella/hap`](https://github.com/brutella/hap) library. The first
-HomeKit accessory is a bridge and the sensor keeps a stable accessory ID derived
+HomeKit accessory is a bridge and each BLE device keeps a stable accessory ID derived
 from its MAC address. The bundled dnssd v1.2.14 patch enables address reuse on
 Linux so the bridge can share mDNS port 5353 with the MGL03 stock HomeKit
 service; the stock service does not need to be stopped.

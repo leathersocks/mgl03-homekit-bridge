@@ -13,6 +13,16 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Xiaomi Toothbrush T700i support for `k0918.toothbrush.t700i` / PDID 6032,
+  exposed as a HomeKit Motion Sensor with battery service.
+- T700i brushing-session reconstruction with a 60-second live-event window,
+  gateway-timestamp correction for stale forced-stop packets, repeated-start
+  heartbeat handling, and a 30-second lost-end watchdog.
+- Product-independent `DeviceAccessory` and accessory-factory abstractions so
+  another BLE family can add its own decoder and HomeKit service composition
+  without changing the MQTT runtime.
+- Korean and English device-extension guides with product registration,
+  decoder, accessory, migration, and verification requirements.
 - A no-Telnet `--mode openmiio` installation mode for consumers such as
   SmartThings Edge that do not need HomeKit.
 - A shared `/data/mgl03-openmiio-start.sh` runtime script that starts
@@ -34,7 +44,11 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Supported sensors first observed while the bridge is running are saved to the
+- BLE parsing now retains `gwts`, dispatches EID data through per-product
+  decoders, and resolves configured products by either PDID or known model.
+- Discovery, registry, startup logs, and runtime matching now use generic BLE
+  device terminology while retaining legacy PDID 5860 migration and stable AIDs.
+- Supported devices first observed while the bridge is running are saved to the
   registry and exposed to HomeKit after the next bridge restart.
 - Existing hash-derived AIDs are retained during the first registry migration
   so current HomeKit pairings and automations keep the same accessory IDs.
@@ -62,6 +76,15 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Temperature sensors showing `0°C` after an MGL03 restart until the next BLE
+  report. The bridge now atomically stores the last temperature, humidity, and
+  battery readings in a mode-`600` `measurements.json` file and restores them
+  before HomeKit starts. Transient state such as toothbrush motion is never
+  persisted.
+- A real T700i forced/early stop can reuse the previous completed-session
+  timestamp. An active session now uses the current gateway receipt time as its
+  effective end and becomes inactive immediately instead of waiting for the
+  watchdog.
 - All bridged sensors appearing as No Response after startup or a short MQTT
   reconnect. Optional per-service active/fault characteristics were removed;
   HomeKit now relies on the bridge connection and retains the last accepted

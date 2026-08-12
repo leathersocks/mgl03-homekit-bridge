@@ -144,10 +144,10 @@ The discovered MAC, DID, product ID, and stable HomeKit AID are saved in
 Pairing keys are kept in `/data/mgl03-homekit/hap`; preserve both locations
 across reboots and upgrades.
 
-## More than one sensor
+## More than one BLE device
 
-New configurations default to `discovery.mode=auto`. Multiple sensors are
-enrolled during the startup window; supported sensors first observed while the
+New configurations default to `discovery.mode=auto`. Multiple devices are
+enrolled during the startup window; supported devices first observed while the
 bridge is running are saved to `devices.json` and appear in HomeKit after one
 bridge restart. Existing configurations retain the legacy `first` behavior.
 Set `discovery.mode` to `manual` to disable automatic enrollment.

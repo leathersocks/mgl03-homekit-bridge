@@ -1,8 +1,6 @@
 package openmiio
 
 import (
-	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -10,29 +8,34 @@ import (
 	"strings"
 )
 
-const (
-	ProductIDSensorHTO2 = 5860
-	ModelSensorHTO2     = "miaomiaoce.sensor_ht.o2"
+type BLEEvent struct {
+	ID   int    `json:"eid"`
+	Data string `json:"edata"`
+}
 
-	eventTemperature = 19457 // 0x4C01, float32 little-endian
-	eventHumidity    = 19458 // 0x4C02, uint8
-	eventBattery     = 18435 // 0x4803, uint8
-)
+type ToothbrushEvent struct {
+	Type      int
+	Timestamp int64
+	Score     *int
+}
 
 type Update struct {
 	DID           string
 	MAC           string
 	ProductID     int
+	Kind          ProductKind
 	Model         string
 	FrameCount    int
 	HasFrameCount bool
+	GatewayTime   int64
 	Temperature   *float64
 	Humidity      *float64
 	Battery       *int
+	Toothbrush    *ToothbrushEvent
 }
 
 func (u Update) HasMeasurements() bool {
-	return u.Temperature != nil || u.Humidity != nil || u.Battery != nil
+	return u.Temperature != nil || u.Humidity != nil || u.Battery != nil || u.Toothbrush != nil
 }
 
 type envelope struct {
@@ -65,11 +68,9 @@ func parseBLEEvent(raw json.RawMessage) ([]Update, error) {
 			MAC  string `json:"mac"`
 			PDID int    `json:"pdid"`
 		} `json:"dev"`
-		Events []struct {
-			ID   int    `json:"eid"`
-			Data string `json:"edata"`
-		} `json:"evt"`
-		FrameCount int `json:"frmCnt"`
+		Events      []BLEEvent `json:"evt"`
+		FrameCount  int        `json:"frmCnt"`
+		GatewayTime int64      `json:"gwts"`
 	}
 	if err := json.Unmarshal(raw, &event); err != nil {
 		return nil, fmt.Errorf("decode BLE event: %w", err)
@@ -83,52 +84,18 @@ func parseBLEEvent(raw json.RawMessage) ([]Update, error) {
 		DID:           event.Dev.DID,
 		MAC:           NormalizeMAC(event.Dev.MAC),
 		ProductID:     event.Dev.PDID,
+		Kind:          product.Kind,
 		Model:         product.Model,
 		FrameCount:    event.FrameCount,
 		HasFrameCount: true,
+		GatewayTime:   event.GatewayTime,
 	}
-	var decodeErrors []string
-	for _, item := range event.Events {
-		switch item.ID {
-		case eventTemperature:
-			value, err := decodeFloat32LE(item.Data)
-			if err != nil {
-				decodeErrors = append(decodeErrors, "temperature: "+err.Error())
-				continue
-			}
-			value = math.Round(value*10) / 10
-			if value < -100 || value > 150 {
-				decodeErrors = append(decodeErrors, fmt.Sprintf("temperature out of range: %.2f", value))
-				continue
-			}
-			u.Temperature = &value
-		case eventHumidity:
-			value, err := decodeByte(item.Data)
-			if err != nil {
-				decodeErrors = append(decodeErrors, "humidity: "+err.Error())
-				continue
-			}
-			f := float64(value)
-			if f > 100 {
-				decodeErrors = append(decodeErrors, fmt.Sprintf("humidity out of range: %d", value))
-				continue
-			}
-			u.Humidity = &f
-		case eventBattery:
-			value, err := decodeByte(item.Data)
-			if err != nil {
-				decodeErrors = append(decodeErrors, "battery: "+err.Error())
-				continue
-			}
-			if value > 100 {
-				decodeErrors = append(decodeErrors, fmt.Sprintf("battery out of range: %d", value))
-				continue
-			}
-			u.Battery = &value
-		}
+	if product.decode == nil {
+		return nil, nil
 	}
+	decodeErrors := product.decode(event.Events, &u)
 	if len(decodeErrors) > 0 {
-		return []Update{u}, fmt.Errorf("decode %s: %s", ModelSensorHTO2, strings.Join(decodeErrors, "; "))
+		return []Update{u}, fmt.Errorf("decode %s: %s", product.Model, strings.Join(decodeErrors, "; "))
 	}
 	if !u.HasMeasurements() {
 		return nil, nil
@@ -201,26 +168,6 @@ func parseMIoTProperties(raw json.RawMessage) ([]Update, error) {
 		}
 	}
 	return updates, nil
-}
-
-func decodeFloat32LE(s string) (float64, error) {
-	b, err := hex.DecodeString(s)
-	if err != nil || len(b) < 4 {
-		return 0, fmt.Errorf("expected 4-byte little-endian float, got %q", s)
-	}
-	v := float64(math.Float32frombits(binary.LittleEndian.Uint32(b[:4])))
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return 0, fmt.Errorf("non-finite float %q", s)
-	}
-	return v, nil
-}
-
-func decodeByte(s string) (int, error) {
-	b, err := hex.DecodeString(s)
-	if err != nil || len(b) < 1 {
-		return 0, fmt.Errorf("expected byte, got %q", s)
-	}
-	return int(b[0]), nil
 }
 
 func rawNumber(raw json.RawMessage) (float64, error) {

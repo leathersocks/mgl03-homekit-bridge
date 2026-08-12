@@ -19,17 +19,7 @@ type Sensor struct {
 }
 
 func NewSensor(device config.Device) *Sensor {
-	model := device.Model
-	if model == "" {
-		model = openmiio.ModelSensorHTO2
-	}
-	info := accessory.Info{
-		Name:         device.Name,
-		SerialNumber: serialNumber(device),
-		Manufacturer: "Miaomiaoce",
-		Model:        model,
-		Firmware:     "MGL03 bridge",
-	}
+	info := accessoryInfo(device, openmiio.ModelSensorHTO2, "Miaomiaoce")
 	thermometer := accessory.NewTemperatureSensor(info)
 	humidity := service.NewHumiditySensor()
 	battery := service.NewBatteryService()
@@ -55,14 +45,19 @@ func (s *Sensor) Apply(update openmiio.Update) {
 		s.humidity.CurrentRelativeHumidity.SetValue(*update.Humidity)
 	}
 	if update.Battery != nil {
-		s.battery.BatteryLevel.SetValue(*update.Battery)
-		low := 0
-		if *update.Battery <= 20 {
-			low = 1
-		}
-		s.battery.StatusLowBattery.SetValue(low)
+		applyBattery(s.battery, *update.Battery)
 	}
 }
+
+func (s *Sensor) DeviceConfig() config.Device {
+	return s.Device
+}
+
+func (s *Sensor) HAPAccessory() *accessory.A {
+	return s.Accessory
+}
+
+func (s *Sensor) Close() {}
 
 func accessoryID(device config.Device) uint64 {
 	if device.AID >= 2 {

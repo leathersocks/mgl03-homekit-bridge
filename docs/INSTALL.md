@@ -142,11 +142,11 @@ tail -f /data/mgl03-homekit/bridge.log
 키는 `/data/mgl03-homekit/hap`에 보관되므로 재부팅과 업그레이드 시 두 위치를
 모두 보존하십시오.
 
-## 여러 센서 사용
+## 여러 BLE 장치 사용
 
 새 구성의 `discovery.mode` 기본값은 `auto`입니다. 시작 시 검색 창에서 여러
-센서를 등록하며, 실행 중 새 센서를 발견하면 `devices.json`에 저장합니다. 실행
-중 추가된 센서는 브리지를 한 번 재시작하면 HomeKit에 나타납니다. 기존 구성은
+장치를 등록하며, 실행 중 새 지원 장치를 발견하면 `devices.json`에 저장합니다.
+실행 중 추가된 장치는 브리지를 한 번 재시작하면 HomeKit에 나타납니다. 기존 구성은
 호환성을 위해 `first` 방식으로 유지됩니다. 자동 등록을 원하지 않으면
 `discovery.mode`를 `manual`로 설정하십시오.
 

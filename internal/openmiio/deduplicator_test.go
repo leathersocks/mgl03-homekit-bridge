@@ -49,3 +49,18 @@ func TestDeduplicatorAllowsMIoTUpdates(t *testing.T) {
 		t.Fatal("message without frame counter was rejected")
 	}
 }
+
+func TestDeduplicatorClassifiesDuplicateAndStale(t *testing.T) {
+	d := NewDeduplicator(time.Minute)
+	update := Update{MAC: "aa:bb:cc:dd:ee:ff", FrameCount: 20, HasFrameCount: true}
+	if got := d.Classify(update); got != FrameAccepted {
+		t.Fatalf("first disposition = %v", got)
+	}
+	if got := d.Classify(update); got != FrameDuplicate {
+		t.Fatalf("duplicate disposition = %v", got)
+	}
+	update.FrameCount = 19
+	if got := d.Classify(update); got != FrameStale {
+		t.Fatalf("stale disposition = %v", got)
+	}
+}

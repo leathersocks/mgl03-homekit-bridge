@@ -7,7 +7,15 @@ func TestProductRegistry(t *testing.T) {
 	if !ok || product.Model != ModelSensorHTO2 || product.DefaultName == "" {
 		t.Fatalf("product = %#v, ok=%v", product, ok)
 	}
-	if SupportedProduct(6032) {
-		t.Fatal("unsupported product was accepted")
+	toothbrush, ok := LookupProduct(ProductIDToothbrushT700i)
+	if !ok || toothbrush.Kind != ProductKindToothbrush || toothbrush.Model != ModelToothbrushT700i {
+		t.Fatalf("toothbrush = %#v, ok=%v", toothbrush, ok)
+	}
+	byModel, ok := LookupProductByModel(ModelToothbrushT700i)
+	if !ok || byModel.ID != ProductIDToothbrushT700i {
+		t.Fatalf("lookup by model = %#v, ok=%v", byModel, ok)
+	}
+	if SupportedProduct(2038) {
+		t.Fatal("unknown product was accepted")
 	}
 }

@@ -166,7 +166,7 @@ func (c *Config) NormalizeAndValidate(configPath string) error {
 		d.MAC = NormalizeMAC(d.MAC)
 		d.DID = strings.TrimSpace(d.DID)
 		if d.Name == "" {
-			d.Name = fmt.Sprintf("Temperature Sensor %d", i+1)
+			d.Name = fmt.Sprintf("Bluetooth Device %d", i+1)
 		}
 		if d.MAC == "" && d.DID == "" {
 			return fmt.Errorf("devices[%d] must have mac or did", i)
