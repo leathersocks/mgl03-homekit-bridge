@@ -1,6 +1,6 @@
 # MGL03 HomeKit BLE bridge
 
-[한국어](README.md)
+[한국어](README.md) · [Changelog](CHANGELOG.en.md)
 
 A small, Home Assistant-free bridge that runs directly on Xiaomi Gateway 3
 (`lumi.gateway.mgl03`). It converts BLE reports from the currently supported

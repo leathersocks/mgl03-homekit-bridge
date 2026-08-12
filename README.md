@@ -1,6 +1,6 @@
 # MGL03 HomeKit BLE 브리지
 
-[English](README.en.md)
+[English](README.en.md) · [변경 이력](CHANGELOG.md)
 
 Xiaomi Gateway 3(`lumi.gateway.mgl03`)에서 직접 실행되는 소형 브리지로,
 Home Assistant가 필요하지 않습니다. 현재 지원하는 `miaomiaoce.sensor_ht.o2` /
