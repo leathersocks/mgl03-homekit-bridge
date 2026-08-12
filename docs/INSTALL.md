@@ -34,6 +34,22 @@ py -m pip install -r .\requirements-installer.txt
 py .\scripts\install_no_telnet.py --gateway-ip 192.168.10.41
 ```
 
+SmartThings Edge Driver처럼 MQTT를 직접 사용하는 구성에는 HomeKit 바이너리가
+필요하지 않습니다. 이 경우 빌드 단계를 생략하고 openmiio 전용 모드를
+사용합니다.
+
+```powershell
+py .\scripts\install_no_telnet.py `
+  --gateway-ip 192.168.10.41 `
+  --mode openmiio
+```
+
+이 모드는 openmiio, MQTT 준비 스크립트와 부팅 훅만 원자적으로 설치하고 TCP
+`1883`을 확인합니다. 기존 HomeKit 브리지 파일이나 페어링 데이터가 있더라도
+삭제하지 않지만, HomeKit 프로세스를 새로 시작하거나 TCP `51826`을 요구하지
+않습니다. 기존 전체 설치에서 전환하면 실행 중 HomeKit 프로세스는 중지됩니다.
+전체 HomeKit 브리지는 기본값인 `--mode homekit`을 사용합니다.
+
 설치 프로그램은 Telnet 세션을 열지 않고 다음 작업을 수행합니다.
 
 1. 로컬 miIO를 통해 모델과 지원 펌웨어를 확인합니다.
@@ -86,6 +102,7 @@ py .\scripts\install_no_telnet.py `
 
 | 로컬 파일 | MGL03 경로 |
 |---|---|
+| `scripts/openmiio-start.sh` | `/data/mgl03-openmiio-start.sh` |
 | `bin/mgl03-homekit-bridge` | `/data/mgl03-homekit-bridge` |
 | `scripts/start.sh` | `/data/mgl03-homekit-start.sh` |
 | `scripts/stop.sh` | `/data/mgl03-homekit-stop.sh` |

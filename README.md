@@ -67,6 +67,28 @@ Telnet 세션을 열거나 TCP 23번 포트를 활성화하지 않습니다. 업
 기존 `/data/mgl03-homekit` 구성, 센서 및 HomeKit 페어링을 보존합니다. 지원
 펌웨어 범위, 롤백 동작 및 수동 대체 방법은 설치 안내서를 참고하십시오.
 
+HomeKit 브리지는 실행하지 않고 SmartThings Edge 같은 외부 소비자에
+openmiio/MQTT만 제공하려면 빌드 없이 다음 모드를 사용합니다.
+
+```powershell
+py .\scripts\install_no_telnet.py `
+  --gateway-ip 192.168.10.41 `
+  --mode openmiio
+```
+
+`openmiio` 모드는 `/data/openmiio_agent`, 공용 시작 스크립트와 부팅 훅만
+설치하고 TCP `1883` 준비 상태를 확인합니다. HomeKit 바이너리, 설정, 페어링
+데이터와 TCP `51826`은 생성하거나 변경하지 않습니다. 기본 `homekit` 모드는
+기존과 같이 전체 브리지를 설치합니다. 기존 전체 설치를 `openmiio` 모드로
+전환하면 HomeKit 프로세스는 중지되지만 구성과 페어링 데이터는 보존됩니다.
+
+MQTT BLE 이벤트만 확인하려면 PC에서 다음 진단 도구를 실행합니다. 기본적으로
+`miio/report`와 `central/report`만 구독합니다.
+
+```powershell
+py .\scripts\mqtt_ble_probe.py --host 192.168.10.41
+```
+
 첫 실행 시 안전한 무작위 페어링 PIN을 만들고 30초 동안 일치하는 센서를
 검색합니다. PIN은 새 구성을 만든 최초 실행에만 권한이 제한된 로그에 기록됩니다.
 편집 가능한 예제는

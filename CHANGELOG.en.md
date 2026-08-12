@@ -13,6 +13,12 @@ and formal releases will use [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A no-Telnet `--mode openmiio` installation mode for consumers such as
+  SmartThings Edge that do not need HomeKit.
+- A shared `/data/mgl03-openmiio-start.sh` runtime script that starts
+  openmiio/MQTT and verifies TCP 1883 readiness.
+- A standalone `scripts/mqtt_ble_probe.py` diagnostic tool that safely
+  subscribes only to `miio/report` and `central/report`.
 - A `discovery.mode=auto` policy that enrolls multiple supported BLE sensors
   during a 30-second discovery window on new installations.
 - A legacy-compatible `first` policy and a `manual` policy that disables

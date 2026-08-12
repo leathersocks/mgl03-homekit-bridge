@@ -12,6 +12,12 @@
 
 ### 추가
 
+- SmartThings Edge처럼 HomeKit을 사용하지 않는 소비자를 위한 무텔넷
+  `--mode openmiio` 설치 모드.
+- openmiio/MQTT 시작과 TCP 1883 준비 확인을 담당하는 공용
+  `/data/mgl03-openmiio-start.sh` 런타임 스크립트.
+- `miio/report`와 `central/report`만 안전하게 구독하는 독립형
+  `scripts/mqtt_ble_probe.py` 진단 도구.
 - 신규 설치 시 30초 검색 창에서 지원되는 여러 BLE 센서를 자동 등록하는
   `discovery.mode=auto` 정책.
 - 기존 단일 센서 동작을 유지하는 `first` 정책과 자동 등록을 끄는 `manual` 정책.

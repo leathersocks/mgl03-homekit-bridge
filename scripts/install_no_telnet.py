@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install or update mgl03-homekit-bridge through local miIO, without Telnet."""
+"""Install the MGL03 openmiio runtime or HomeKit bridge without Telnet."""
 
 from __future__ import annotations
 
@@ -36,14 +36,22 @@ MODEL = "lumi.gateway.mgl03"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-ARTIFACTS = (
+COMMON_ARTIFACTS = (
     ("openmiio_agent", "/data/openmiio_agent", "755"),
+    ("mgl03-openmiio-start.sh", "/data/mgl03-openmiio-start.sh", "755"),
+    ("runtime-mode", "/data/mgl03-homekit/runtime-mode", "600"),
+    ("startup.sh", "/data/scripts/startup.sh", "755"),
+)
+HOMEKIT_ARTIFACTS = (
     ("mgl03-homekit-bridge", "/data/mgl03-homekit-bridge", "755"),
     ("mgl03-homekit-start.sh", "/data/mgl03-homekit-start.sh", "755"),
     ("mgl03-homekit-stop.sh", "/data/mgl03-homekit-stop.sh", "755"),
     ("mgl03-homekit-cleanup.sh", "/data/mgl03-homekit-cleanup.sh", "755"),
-    ("startup.sh", "/data/scripts/startup.sh", "755"),
 )
+ARTIFACTS_BY_MODE = {
+    "openmiio": COMMON_ARTIFACTS,
+    "homekit": COMMON_ARTIFACTS + HOMEKIT_ARTIFACTS,
+}
 
 STATUS_MESSAGES = {
     0: "installation completed",
@@ -53,7 +61,7 @@ STATUS_MESSAGES = {
     18: "artifact checksum mismatch",
     20: "an unknown existing startup hook was preserved",
     30: "runtime file installation failed and was rolled back",
-    40: "new bridge start failed and was rolled back",
+    40: "new runtime start failed and was rolled back",
     41: "new bridge exited during startup and was rolled back",
     90: "gateway could not download the on-device installer",
     91: "on-device installer checksum mismatch",
@@ -147,24 +155,36 @@ def obtain_openmiio(path: Path | None) -> bytes:
     return data
 
 
-def prepare_stage(stage: Path, openmiio_data: bytes, bridge_path: Path) -> tuple[str, str]:
-    validate_mips_binary(bridge_path)
-
+def prepare_stage(
+    stage: Path,
+    openmiio_data: bytes,
+    bridge_path: Path | None,
+    mode: str = "homekit",
+) -> tuple[str, str]:
+    artifacts = ARTIFACTS_BY_MODE[mode]
     sources: dict[str, bytes] = {
         "openmiio_agent": openmiio_data,
-        "mgl03-homekit-bridge": bridge_path.read_bytes(),
+        "runtime-mode": f"{mode}\n".encode(),
+        "mgl03-openmiio-start.sh": read_lf_script(
+            PROJECT_ROOT / "scripts" / "openmiio-start.sh"
+        ),
         "mgl03-homekit-start.sh": read_lf_script(PROJECT_ROOT / "scripts" / "start.sh"),
         "mgl03-homekit-stop.sh": read_lf_script(PROJECT_ROOT / "scripts" / "stop.sh"),
         "mgl03-homekit-cleanup.sh": read_lf_script(PROJECT_ROOT / "scripts" / "cleanup.sh"),
         "startup.sh": read_lf_script(PROJECT_ROOT / "scripts" / "startup.sh"),
     }
+    if mode == "homekit":
+        if bridge_path is None:
+            raise ValueError("--bridge-bin is required in homekit mode")
+        validate_mips_binary(bridge_path)
+        sources["mgl03-homekit-bridge"] = bridge_path.read_bytes()
 
     manifest_lines: list[str] = []
-    for name, destination, mode in ARTIFACTS:
+    for name, destination, file_mode in artifacts:
         data = sources[name]
         (stage / name).write_bytes(data)
         manifest_lines.append(
-            f"{sha256_bytes(data)} {md5_bytes(data)} {mode} {name} {destination}"
+            f"{sha256_bytes(data)} {md5_bytes(data)} {file_mode} {name} {destination}"
         )
 
     manifest = ("\n".join(manifest_lines) + "\n").encode()
@@ -182,6 +202,7 @@ def build_bootstrap(
     manifest_md5: str,
     installer_sha256: str,
     installer_md5: str,
+    mode: str = "homekit",
 ) -> bytes:
     values = {
         "BASE_URL": base_url,
@@ -190,6 +211,7 @@ def build_bootstrap(
         "MANIFEST_MD5": manifest_md5,
         "INSTALLER_SHA256": installer_sha256,
         "INSTALLER_MD5": installer_md5,
+        "INSTALL_MODE": mode,
     }
     assignments = "\n".join(f"{key}={shlex.quote(value)}" for key, value in values.items())
     script = f"""#!/bin/sh
@@ -216,7 +238,7 @@ if wget -O "$INSTALLER.new" "$BASE_URL/install-on-device.sh"; then
     if verify_file "$INSTALLER.new" "$INSTALLER_SHA256" "$INSTALLER_MD5"; then
         chmod 700 "$INSTALLER.new"
         mv "$INSTALLER.new" "$INSTALLER"
-        "$INSTALLER" "$BASE_URL" "$MANIFEST_SHA256" "$MANIFEST_MD5"
+        "$INSTALLER" "$BASE_URL" "$MANIFEST_SHA256" "$MANIFEST_MD5" "$INSTALL_MODE"
         STATUS=$?
     else
         STATUS=91
@@ -330,7 +352,11 @@ def run(args: argparse.Namespace) -> int:
         print(f"ERROR: prepare openmiio_agent: {exc}", file=sys.stderr)
         return 6
 
-    bridge_path = Path(args.bridge_bin).resolve()
+    bridge_path = (
+        Path(args.bridge_bin).resolve()
+        if args.mode == "homekit"
+        else None
+    )
     callback_event = threading.Event()
     callback_result: dict[str, int] = {}
     nonce = secrets.token_hex(12)
@@ -338,7 +364,12 @@ def run(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory(prefix="mgl03-homekit-install-") as temp:
         stage = Path(temp)
         try:
-            manifest_sha256, manifest_md5 = prepare_stage(stage, openmiio_data, bridge_path)
+            manifest_sha256, manifest_md5 = prepare_stage(
+                stage,
+                openmiio_data,
+                bridge_path,
+                args.mode,
+            )
         except Exception as exc:
             print(f"ERROR: prepare installation files: {exc}", file=sys.stderr)
             return 7
@@ -366,6 +397,7 @@ def run(args: argparse.Namespace) -> int:
             manifest_md5,
             installer_sha256,
             installer_md5,
+            args.mode,
         )
         (stage / "bootstrap.sh").write_bytes(bootstrap)
         bootstrap_sha256 = sha256_bytes(bootstrap)
@@ -410,7 +442,20 @@ def run(args: argparse.Namespace) -> int:
             print(f"ERROR: gateway installer status {status}: {message}.", file=sys.stderr)
             return 12
 
-    print("Gateway reported a successful atomic installation.")
+    print(f"Gateway reported a successful atomic {args.mode} installation.")
+    if args.mode == "openmiio":
+        for _ in range(30):
+            if port_is_open(args.gateway_ip, 1883):
+                print("openmiio/MQTT runtime is listening on TCP 1883.")
+                return 0
+            time.sleep(1)
+
+        print(
+            "Installation succeeded, but MQTT TCP 1883 is not reachable yet. "
+            "Check /data/mgl03-homekit/openmiio.log when local shell access is available."
+        )
+        return 0
+
     # New installations may spend 30 seconds collecting all supported sensors
     # before the HAP listener starts, so leave an additional readiness margin.
     for _ in range(60):
@@ -429,8 +474,8 @@ def run(args: argparse.Namespace) -> int:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Install or update mgl03-homekit-bridge through the local miIO "
-            "set_ip_info path without opening a Telnet session."
+            "Install the MGL03 openmiio runtime or complete HomeKit bridge "
+            "through local miIO without opening a Telnet session."
         )
     )
     parser.add_argument("--gateway-ip", type=ipv4_address, default="192.168.10.41")
@@ -447,6 +492,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--http-port", type=int, default=0, help="temporary HTTP port; 0 selects one")
     parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument(
+        "--mode",
+        choices=sorted(ARTIFACTS_BY_MODE),
+        default="homekit",
+        help="homekit installs the full bridge; openmiio installs only the Edge MQTT runtime",
+    )
     parser.add_argument(
         "--bridge-bin",
         default=str(PROJECT_ROOT / "bin" / "mgl03-homekit-bridge"),

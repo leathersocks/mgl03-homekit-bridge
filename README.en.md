@@ -67,6 +67,29 @@ Existing `/data/mgl03-homekit` configuration, sensors, and HomeKit pairing are
 preserved during updates. See the installation guide for firmware limitations,
 rollback behavior, and the manual fallback.
 
+To provide only openmiio/MQTT to an external consumer such as SmartThings Edge,
+without running the HomeKit bridge, use this mode; no bridge build is required:
+
+```powershell
+py .\scripts\install_no_telnet.py `
+  --gateway-ip 192.168.10.41 `
+  --mode openmiio
+```
+
+`openmiio` mode installs only `/data/openmiio_agent`, the shared runtime start
+script, and the boot hook, then verifies TCP `1883`. It does not create or
+change the HomeKit binary, configuration, pairing data, or TCP `51826`. The
+default `homekit` mode continues to install the complete bridge. Switching an
+existing full installation to `openmiio` mode stops the HomeKit process while
+preserving its configuration and pairing data.
+
+To inspect MQTT BLE events only, run the diagnostic tool on the PC. It
+subscribes only to `miio/report` and `central/report` by default:
+
+```powershell
+py .\scripts\mqtt_ble_probe.py --host 192.168.10.41
+```
+
 The first run creates a secure random pairing PIN and discovers matching sensors
 for 30 seconds. The PIN is logged only when a new configuration is created, in a
 permission-restricted log. An editable example is available at

@@ -34,6 +34,21 @@ to the bundle, command line, logs, or gateway filesystem:
 py .\scripts\install_no_telnet.py --gateway-ip 192.168.10.41
 ```
 
+An MQTT consumer such as the SmartThings Edge Driver does not need the HomeKit
+binary. In that case, skip the bridge build and use openmiio-only mode:
+
+```powershell
+py .\scripts\install_no_telnet.py `
+  --gateway-ip 192.168.10.41 `
+  --mode openmiio
+```
+
+This mode atomically installs only openmiio, its MQTT readiness script, and the
+boot hook, then verifies TCP `1883`. It does not delete any existing HomeKit
+files or pairing data, but it does not start a HomeKit process or require TCP
+`51826`. Switching from a full installation stops the running HomeKit process.
+Use the default `--mode homekit` for the complete bridge.
+
 The installer performs the following operations without opening a Telnet
 session:
 
@@ -88,6 +103,7 @@ Build the project on a computer, then copy these files to the gateway:
 
 | Local file | MGL03 path |
 |---|---|
+| `scripts/openmiio-start.sh` | `/data/mgl03-openmiio-start.sh` |
 | `bin/mgl03-homekit-bridge` | `/data/mgl03-homekit-bridge` |
 | `scripts/start.sh` | `/data/mgl03-homekit-start.sh` |
 | `scripts/stop.sh` | `/data/mgl03-homekit-stop.sh` |

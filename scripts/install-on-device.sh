@@ -6,7 +6,8 @@ STAGING_DIR="$STATE_DIR/install-staging"
 MANIFEST_FILE="$STAGING_DIR/manifest.txt"
 CHANGES_FILE="$STAGING_DIR/changes.txt"
 BACKUP_SUFFIX=.pre-notelnet-install
-KNOWN_STARTUP_MD5=b8086d3d3f450bc66156ed5ef9a38520
+KNOWN_STARTUP_MD5_V1=b8086d3d3f450bc66156ed5ef9a38520
+KNOWN_STARTUP_MD5_V2=12693c64a852f81f7a9899a13c5d7228
 
 fail() {
     echo "INSTALL ERROR: $1" >&2
@@ -36,6 +37,8 @@ verify_file() {
 allowed_destination() {
     case "$1" in
         /data/openmiio_agent|\
+        /data/mgl03-openmiio-start.sh|\
+        /data/mgl03-homekit/runtime-mode|\
         /data/mgl03-homekit-bridge|\
         /data/mgl03-homekit-start.sh|\
         /data/mgl03-homekit-stop.sh|\
@@ -76,13 +79,19 @@ discard_backups() {
     done < "$CHANGES_FILE"
 }
 
-if [ "$#" -ne 3 ]; then
-    fail "usage: install-on-device.sh BASE_URL MANIFEST_SHA256 MANIFEST_MD5" 2
+if [ "$#" -ne 4 ]; then
+    fail "usage: install-on-device.sh BASE_URL MANIFEST_SHA256 MANIFEST_MD5 MODE" 2
 fi
 
 BASE_URL=$1
 EXPECTED_MANIFEST_SHA256=$2
 EXPECTED_MANIFEST_MD5=$3
+INSTALL_MODE=$4
+
+case "$INSTALL_MODE" in
+    openmiio|homekit) ;;
+    *) fail "MODE must be openmiio or homekit" 3 ;;
+esac
 
 case "$BASE_URL" in
     http://*) ;;
@@ -119,7 +128,7 @@ while read -r EXPECTED_SHA256 EXPECTED_MD5 MODE NAME DESTINATION EXTRA; do
         fail "manifest contains unsafe destination: $DESTINATION" 14
 
     case "$MODE" in
-        700|755) ;;
+        600|700|755) ;;
         *) fail "manifest contains unsafe mode for $NAME" 15 ;;
     esac
 
@@ -148,14 +157,23 @@ done < "$MANIFEST_FILE"
 if [ -e /data/scripts/startup.sh ]; then
     CURRENT_STARTUP_MD5=$(file_md5 /data/scripts/startup.sh)
     case "$CURRENT_STARTUP_MD5" in
-        "$NEW_STARTUP_MD5"|"$KNOWN_STARTUP_MD5") ;;
+        "$NEW_STARTUP_MD5"|"$KNOWN_STARTUP_MD5_V1"|"$KNOWN_STARTUP_MD5_V2") ;;
         *)
             fail "refusing to overwrite an unknown /data/scripts/startup.sh" 20
             ;;
     esac
 fi
 
-if [ -x /data/mgl03-homekit-stop.sh ]; then
+PREVIOUS_MODE=homekit
+if [ -f /data/mgl03-homekit/runtime-mode ]; then
+    PREVIOUS_MODE=$(cat /data/mgl03-homekit/runtime-mode)
+fi
+case "$PREVIOUS_MODE" in
+    openmiio|homekit) ;;
+    *) PREVIOUS_MODE=homekit ;;
+esac
+
+if [ "$PREVIOUS_MODE" = "homekit" ] && [ -x /data/mgl03-homekit-stop.sh ]; then
     /data/mgl03-homekit-stop.sh || fail "stop current bridge" 21
 fi
 
@@ -196,16 +214,39 @@ done < "$MANIFEST_FILE"
 
 if [ "$INSTALL_FAILED" -ne 0 ]; then
     rollback_changes
-    if [ -x /data/mgl03-homekit-start.sh ]; then
+    if [ -x /data/mgl03-openmiio-start.sh ]; then
+        /data/mgl03-openmiio-start.sh >/dev/null 2>&1 || true
+    fi
+    if [ "$PREVIOUS_MODE" = "homekit" ] && [ -x /data/mgl03-homekit-start.sh ]; then
         /data/mgl03-homekit-start.sh >/dev/null 2>&1 || true
     fi
     fail "install runtime files; previous files were restored" 30
 fi
 
 sync
+if ! /data/mgl03-openmiio-start.sh; then
+    rollback_changes
+    /data/mgl03-openmiio-start.sh >/dev/null 2>&1 || true
+    if [ "$PREVIOUS_MODE" = "homekit" ] && [ -x /data/mgl03-homekit-start.sh ]; then
+        /data/mgl03-homekit-start.sh >/dev/null 2>&1 || true
+    fi
+    fail "start openmiio/MQTT runtime; previous files were restored" 40
+fi
+
+if [ "$INSTALL_MODE" = "openmiio" ]; then
+    discard_backups
+    rm -rf "$STAGING_DIR"
+    sync
+    echo "installation complete; openmiio/MQTT runtime is ready on TCP 1883"
+    exit 0
+fi
+
 if ! /data/mgl03-homekit-start.sh; then
     rollback_changes
-    /data/mgl03-homekit-start.sh >/dev/null 2>&1 || true
+    /data/mgl03-openmiio-start.sh >/dev/null 2>&1 || true
+    if [ "$PREVIOUS_MODE" = "homekit" ] && [ -x /data/mgl03-homekit-start.sh ]; then
+        /data/mgl03-homekit-start.sh >/dev/null 2>&1 || true
+    fi
     fail "start new bridge; previous files were restored" 40
 fi
 
@@ -217,7 +258,10 @@ fi
 if [ -z "$BRIDGE_PID" ] || ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
     /data/mgl03-homekit-stop.sh >/dev/null 2>&1 || true
     rollback_changes
-    /data/mgl03-homekit-start.sh >/dev/null 2>&1 || true
+    /data/mgl03-openmiio-start.sh >/dev/null 2>&1 || true
+    if [ "$PREVIOUS_MODE" = "homekit" ] && [ -x /data/mgl03-homekit-start.sh ]; then
+        /data/mgl03-homekit-start.sh >/dev/null 2>&1 || true
+    fi
     fail "bridge did not survive startup; previous files were restored" 41
 fi
 

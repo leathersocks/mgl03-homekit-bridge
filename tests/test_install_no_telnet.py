@@ -50,6 +50,7 @@ class NoTelnetInstallerTests(unittest.TestCase):
             "b" * 32,
         )
         self.assertIn(b"install-on-device.sh", bootstrap)
+        self.assertIn(b"INSTALL_MODE=homekit", bootstrap)
         self.assertNotIn(b"token", bootstrap.lower())
 
         command = MODULE.build_injection(
@@ -71,7 +72,14 @@ class NoTelnetInstallerTests(unittest.TestCase):
             scripts.mkdir(parents=True)
             bridge = root / "bridge"
             bridge.write_bytes(header)
-            for name in ("start.sh", "stop.sh", "cleanup.sh", "startup.sh", "install-on-device.sh"):
+            for name in (
+                "openmiio-start.sh",
+                "start.sh",
+                "stop.sh",
+                "cleanup.sh",
+                "startup.sh",
+                "install-on-device.sh",
+            ):
                 (scripts / name).write_bytes(b"#!/bin/sh\nexit 0\n")
 
             stage = Path(temp) / "stage"
@@ -84,7 +92,10 @@ class NoTelnetInstallerTests(unittest.TestCase):
                 MODULE.PROJECT_ROOT = previous_root
 
             manifest = (stage / "manifest.txt").read_text(encoding="utf-8")
-            self.assertEqual(len(manifest.strip().splitlines()), len(MODULE.ARTIFACTS))
+            self.assertEqual(
+                len(manifest.strip().splitlines()),
+                len(MODULE.ARTIFACTS_BY_MODE["homekit"]),
+            )
             for line in manifest.strip().splitlines():
                 fields = line.split()
                 self.assertEqual(len(fields[0]), 64)
@@ -93,6 +104,44 @@ class NoTelnetInstallerTests(unittest.TestCase):
             self.assertNotIn("key", manifest.lower())
             self.assertNotIn("config.json", manifest)
             self.assertNotIn("/data/mgl03-homekit/hap", manifest)
+
+    def test_openmiio_mode_omits_homekit_runtime(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+            for name in (
+                "openmiio-start.sh",
+                "start.sh",
+                "stop.sh",
+                "cleanup.sh",
+                "startup.sh",
+                "install-on-device.sh",
+            ):
+                (scripts / name).write_bytes(b"#!/bin/sh\nexit 0\n")
+
+            stage = Path(temp) / "stage"
+            stage.mkdir()
+            previous_root = MODULE.PROJECT_ROOT
+            MODULE.PROJECT_ROOT = root
+            try:
+                MODULE.prepare_stage(stage, b"fake-openmiio", None, "openmiio")
+            finally:
+                MODULE.PROJECT_ROOT = previous_root
+
+            manifest = (stage / "manifest.txt").read_text(encoding="utf-8")
+            self.assertIn("/data/openmiio_agent", manifest)
+            self.assertIn("/data/mgl03-openmiio-start.sh", manifest)
+            self.assertIn("/data/mgl03-homekit/runtime-mode", manifest)
+            self.assertIn("/data/scripts/startup.sh", manifest)
+            self.assertNotIn("mgl03-homekit-bridge", manifest)
+            self.assertNotIn("mgl03-homekit-start.sh", manifest)
+            self.assertEqual((stage / "runtime-mode").read_text(), "openmiio\n")
+
+    def test_openmiio_cli_mode_is_explicit(self):
+        args = MODULE.parse_args(["--mode", "openmiio"])
+        self.assertEqual(args.mode, "openmiio")
+        self.assertEqual(MODULE.parse_args([]).mode, "homekit")
 
 
 if __name__ == "__main__":

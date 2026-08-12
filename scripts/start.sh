@@ -4,22 +4,10 @@ umask 077
 
 STATE_DIR=/data/mgl03-homekit
 BRIDGE_BIN=/data/mgl03-homekit-bridge
-OPENMIIO_BIN=/data/openmiio_agent
+OPENMIIO_START=/data/mgl03-openmiio-start.sh
 CONFIG_FILE="$STATE_DIR/config.json"
 LOG_FILE="$STATE_DIR/bridge.log"
 PID_FILE="$STATE_DIR/bridge.pid"
-
-openmiio_is_running() {
-    for CMDLINE_FILE in /proc/[0-9]*/cmdline; do
-        [ -r "$CMDLINE_FILE" ] || continue
-        CMDLINE=$(tr '\000' ' ' < "$CMDLINE_FILE")
-        case "$CMDLINE" in
-            "$OPENMIIO_BIN "*miio*central*mqtt*cache*|\
-            "$OPENMIIO_BIN "*miio*mqtt*cache*central*) return 0 ;;
-        esac
-    done
-    return 1
-}
 
 bridge_pid_is_running() {
     PID=$1
@@ -30,10 +18,6 @@ bridge_pid_is_running() {
         "$BRIDGE_BIN "*|"$BRIDGE_BIN") kill -0 "$PID" 2>/dev/null ;;
         *) return 1 ;;
     esac
-}
-
-mqtt_is_ready() {
-    netstat -lnt 2>/dev/null | grep -e ':1883 ' >/dev/null 2>&1
 }
 
 rotate_log() {
@@ -48,11 +32,11 @@ rotate_log() {
 }
 
 mkdir -p "$STATE_DIR"
-touch "$LOG_FILE" "$STATE_DIR/openmiio.log"
-chmod 600 "$LOG_FILE" "$STATE_DIR/openmiio.log"
+touch "$LOG_FILE"
+chmod 600 "$LOG_FILE"
 
-if [ ! -x "$OPENMIIO_BIN" ]; then
-    echo "missing executable: $OPENMIIO_BIN" >&2
+if [ ! -x "$OPENMIIO_START" ]; then
+    echo "missing executable: $OPENMIIO_START" >&2
     exit 1
 fi
 if [ ! -x "$BRIDGE_BIN" ]; then
@@ -60,23 +44,7 @@ if [ ! -x "$BRIDGE_BIN" ]; then
     exit 1
 fi
 
-if ! openmiio_is_running; then
-	rotate_log "$STATE_DIR/openmiio.log"
-	touch "$STATE_DIR/openmiio.log"
-	chmod 600 "$STATE_DIR/openmiio.log"
-    "$OPENMIIO_BIN" miio central mqtt cache >>"$STATE_DIR/openmiio.log" 2>&1 &
-    WAIT=0
-    while [ "$WAIT" -lt 20 ] && { ! openmiio_is_running || ! mqtt_is_ready; }; do
-        sleep 1
-        WAIT=$((WAIT + 1))
-    done
-    if ! openmiio_is_running || ! mqtt_is_ready; then
-        echo "openmiio_agent failed to start; log: $STATE_DIR/openmiio.log" >&2
-        exit 1
-    fi
-else
-    echo "openmiio_agent is already running with miio central mqtt cache"
-fi
+"$OPENMIIO_START" || exit $?
 
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE")
